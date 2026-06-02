@@ -11,8 +11,8 @@
       "priority": 10
     },
     {
-      "pattern": "research|analyze|search|summarize|compare|investigate|learn",
-      "target": "gemini",
+      "pattern": "research|analyze|search|summarize|compare|investigate|learn|reason|deep",
+      "target": "labyrinth",
       "priority": 10
     },
     {
@@ -25,7 +25,8 @@
   "agent_capabilities": {
     "opencode": ["code_generation", "file_operations", "git_management", "terminal_execution", "infrastructure_as_code", "testing", "debugging"],
     "hermes": ["persistent_memory", "scheduled_tasks", "messaging_channels", "skill_hub", "voice", "browser_automation", "subagent_delegation"],
-    "gemini": ["web_search", "multi_modal_analysis", "document_understanding", "data_analysis", "research_synthesis", "reasoning"]
+    "labyrinth": ["deep_reasoning", "chain_of_thought", "research_synthesis", "codebase_analysis", "architectural_review", "memory_consolidation", "error_analysis"],
+    "mercury": ["autopilot_execution", "rapid_file_ops", "draft_email", "task_dispatch"]
   },
   "handoff_protocol": {
     "enabled": true,

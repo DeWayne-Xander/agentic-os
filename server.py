@@ -479,6 +479,19 @@ def discover_standards():
     append_audit({"action": "standards_discovery_run"})
     return {"status": "discovery_started", "message": "Scanning codebase for patterns..."}
 
+# ─── Routes: Health ────────────────────────────────────────────────
+
+@app.get("/api/health")
+def health():
+    agents = [check_agent(a) for a in ["opencode", "hermes", "gemini"]]
+    return {
+        "status": "healthy",
+        "version": "1.1.0",
+        "agents": agents,
+        "pantheon_profiles": ["chrono", "labyrinth", "mercury", "philosopher"],
+        "timestamp": get_timestamp(),
+    }
+
 # ─── Routes: Chat ─────────────────────────────────────────────────
 
 CHAT_HISTORY_FILE = BASE_DIR / "data" / "chat-history.json"
@@ -524,7 +537,7 @@ def clean_hermes_output(raw: str) -> str:
     non_meta = [l.strip() for l in lines if l.strip() and not l.startswith(('Query:', 'Initializing', '──', 'Resume', 'Session:', 'Duration:', 'Messages:'))]
     return '\n'.join(non_meta[-5:]) or raw
 
-def execute_agent(agent: str, message: str) -> str:
+def execute_agent(agent: str, message: str, profile: str | None = None) -> str:
     try:
         if agent == "opencode":
             try:
@@ -600,8 +613,32 @@ def execute_agent(agent: str, message: str) -> str:
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     agent = req.agent.lower().strip()
+
+    # Pantheon agents: map to Hermes profiles
+    PANTHEON_PROFILES = {
+        "chrono": "chrono",
+        "labyrinth": "labyrinth",
+        "mercury": "mercury",
+        "philosopher": "philosopher",
+    }
+
+    if agent in PANTHEON_PROFILES:
+        hermes_profile = PANTHEON_PROFILES[agent]
+        response_text = execute_agent("hermes", req.message, profile=hermes_profile)
+        agent_msg = {
+            "id": str(uuid.uuid4())[:8],
+            "role": "assistant",
+            "agent": agent,
+            "content": response_text,
+            "timestamp": get_timestamp(),
+        }
+        save_chat_message({"id": str(uuid.uuid4())[:8], "role": "user", "agent": agent, "content": req.message, "timestamp": get_timestamp()})
+        save_chat_message(agent_msg)
+        append_audit({"action": "chat_message", "agent": agent, "msg_preview": req.message[:50]})
+        return {"status": "ok", "response": agent_msg}
+
     if agent not in ["opencode", "hermes", "gemini"]:
-        raise HTTPException(400, "Agent must be one of: opencode, hermes, gemini")
+        raise HTTPException(400, f"Agent must be one of: opencode, hermes, gemini, {', '.join(PANTHEON_PROFILES.keys())}")
 
     user_msg = {
         "id": str(uuid.uuid4())[:8],
