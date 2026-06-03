@@ -106,9 +106,24 @@ export interface Goal {
   done: boolean;
   category?: string;
   createdAt: string;
+  taskId?: string;
+  assignee?: string;
+  delegatedAt?: string;
 }
 
-const GOAL_LINE = /^- \[( |x|X)\]\s+(?:\(([^)]+)\)\s+)?(.+?)(?:\s+<!--\s+id:([A-Za-z0-9_-]+)(?:\\s+createdAt:([0-9T:\-.Z]+))?\\s+-->)?$/;
+const GOAL_LINE = /^- \[( |x|X)\]\s+(?:\(([^)]+)\)\s+)?(.+?)(?:\s+<!--\s+([^>]+)\s+-->)?$/;
+
+function parseGoalMeta(meta: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const token of meta.split(/\s+/)) {
+    const idx = token.indexOf(":");
+    if (idx <= 0) continue;
+    const key = token.slice(0, idx).trim();
+    const value = token.slice(idx + 1).trim();
+    if (key) out[key] = value;
+  }
+  return out;
+}
 
 export async function readGoals(): Promise<Goal[]> {
   await ensureDir(AGENTIC_DIR);
@@ -118,12 +133,16 @@ export async function readGoals(): Promise<Goal[]> {
   for (const line of content.split(/\r?\n/)) {
     const m = line.match(GOAL_LINE);
     if (!m) continue;
+    const meta = m[4] ? parseGoalMeta(m[4]) : {};
     out.push({
-      id: m[4] || cryptoId(),
+      id: meta.id || cryptoId(),
       done: m[1].toLowerCase() === "x",
       category: m[2] || undefined,
       text: m[3].trim(),
-      createdAt: m[5] || new Date().toISOString(),
+      createdAt: meta.createdAt || new Date().toISOString(),
+      taskId: meta.taskId || undefined,
+      assignee: meta.assignee || undefined,
+      delegatedAt: meta.delegatedAt || undefined,
     });
   }
   return out;
@@ -137,7 +156,7 @@ export async function writeGoals(goals: Goal[]): Promise<void> {
   const open = goals.filter((g) => !g.done);
   const done = goals.filter((g) => g.done);
   const fmt = (g: Goal) => 
-    `- [${g.done ? "x" : " "}] ${g.category ? `(${g.category}) ` : ""}${g.text} <!-- id:${g.id} createdAt:${g.createdAt} -->`;
+    `- [${g.done ? "x" : " "}] ${g.category ? `(${g.category}) ` : ""}${g.text} <!-- id:${g.id} createdAt:${g.createdAt}${g.taskId ? ` taskId:${g.taskId}` : ""}${g.assignee ? ` assignee:${g.assignee}` : ""}${g.delegatedAt ? ` delegatedAt:${g.delegatedAt}` : ""} -->`;
   const body =
     (open.length ? `## Active\n${open.map(fmt).join("\n")}\n\n` : "") +
     (done.length ? `## Completed\n${done.map(fmt).join("\n")}\n` : "");

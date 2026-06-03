@@ -479,7 +479,44 @@ def discover_standards():
     append_audit({"action": "standards_discovery_run"})
     return {"status": "discovery_started", "message": "Scanning codebase for patterns..."}
 
-# ─── Routes: Health ────────────────────────────────────────────────
+# ─── Unified Health Dashboard ────────────────────────────────────────
+
+import signal as _signal
+import threading as _threading_mod
+
+# Import our local monitor modules (same directory as server.py)
+import sys as _sys
+_sys.path.insert(0, str(BASE_DIR))
+
+from daemon_monitor import DaemonHealthMonitor
+from gateway_monitor import GatewayMonitor
+from unified_health import UnifiedHealthDashboard
+
+_daemon_monitor = DaemonHealthMonitor(poll_interval=10, rolling_window=300)
+_gateway_monitor = GatewayMonitor(poll_interval=15, rolling_window=300)
+_health_dashboard = UnifiedHealthDashboard(_daemon_monitor, _gateway_monitor)
+
+@app.on_event("startup")
+def _start_health_monitors():
+    """Start daemon and gateway health monitors on application boot."""
+    _health_dashboard.start()
+
+@app.on_event("shutdown")
+def _stop_health_monitors():
+    """Gracefully stop health monitors on application shutdown."""
+    _health_dashboard.stop()
+
+@app.get("/api/health/unified")
+def unified_health():
+    """Unified health dashboard: daemon + gateway + combined status."""
+    return _health_dashboard.get_status()
+
+@app.get("/api/health/unified/compact")
+def unified_health_compact():
+    """Compact unified health status for lightweight polling."""
+    return _health_dashboard.get_compact_status()
+
+# ─── Routes: Health (original) ─────────────────────────────────────
 
 @app.get("/api/health")
 def health():

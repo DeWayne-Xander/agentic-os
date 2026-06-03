@@ -24,7 +24,7 @@ export default function AgentPortal({ href, title, tagline, icon, accent, metric
   return (
     <Link href={href} className="block group">
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
         whileHover={{ y: -3 }}
         transition={{ duration: 0.35 }}

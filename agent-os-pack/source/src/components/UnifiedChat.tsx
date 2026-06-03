@@ -5,6 +5,7 @@ import { useChatContext, type ChatMessage } from "@/context/ChatContext";
 import { useEnhancedChat } from "@/context/EnhancedChatContext";
 import { useStreamContext } from "@/context/StreamContext";
 import { ApprovalGate } from "./ApprovalGate";
+import VoiceButton from "./VoiceButton";
 import { modelDisplayName, type ModelTier, type RouteDecision } from "@/lib/model-router";
 
 export interface UnifiedChatProps {
@@ -368,13 +369,15 @@ export default function UnifiedChat({ agent }: UnifiedChatProps) {
     setStreaming(false);
   };
 
+  const messageKey = (m: ChatMessage, idx: number) => `${m.id}:${m.role}:${m.ts}:${idx}`;
+
   const displayName =
     agent === "chrono" ? "Chrono" :
     agent === "openclaw" ? "Kairos" :
     agent;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col" style={{ minHeight: "min(500px, calc(100svh - 220px))" }}>
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 border-b border-white/10 shrink-0">
         <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
@@ -406,9 +409,9 @@ export default function UnifiedChat({ agent }: UnifiedChatProps) {
             <span className="text-violet-400">/commands</span> to begin.
           </p>
         )}
-        {messages.map((m) => (
+        {messages.map((m, idx) => (
           <div
-            key={m.id}
+            key={messageKey(m, idx)}
             className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
               m.role === "user"
                 ? "ml-auto bg-violet-600/20 text-violet-100 border border-violet-500/30"
@@ -426,8 +429,12 @@ export default function UnifiedChat({ agent }: UnifiedChatProps) {
       </div>
 
       {/* Input */}
-      <div className="shrink-0 border-t border-white/10 p-4 relative">
+      <div className="shrink-0 border-t border-white/10 p-3 sm:p-4 relative">
         <div className="flex items-end gap-2 bg-white/5 rounded-xl border border-white/10 px-3 py-2">
+          <VoiceButton
+            onTranscript={(t, o) => { if (o.final) setInput((v) => (v ? v + " " : "") + t); }}
+            size={32}
+          />
           <textarea
             ref={inputRef}
             value={input}

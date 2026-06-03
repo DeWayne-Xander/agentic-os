@@ -31,6 +31,16 @@ function boardArgs(board?: string): string[] {
   return board && BOARD_RE.test(board) ? ["--board", board] : [];
 }
 
+async function dispatchBoard(board?: string): Promise<void> {
+  try {
+    await run("hermes", ["kanban", ...boardArgs(board), "dispatch", "--max", "10", "--json"], {
+      timeoutMs: 30_000,
+    });
+  } catch {
+    // Best effort only. Some runs will still need a later manual dispatch tick.
+  }
+}
+
 export async function POST(req: Request) {
   const b: ActionBody = await req.json();
   const board = boardArgs(b.board);
@@ -108,6 +118,18 @@ export async function POST(req: Request) {
   // Try to parse JSON output, fall back to plain text
   let parsed: unknown = null;
   try { parsed = JSON.parse(out.stdout); } catch {}
+
+  const shouldAutoDispatch =
+    out.ok && (
+      b.action === "create" ||
+      b.action === "assign" ||
+      b.action === "specify" ||
+      b.action === "decompose"
+    );
+  if (shouldAutoDispatch) {
+    await dispatchBoard(b.board);
+  }
+
   return NextResponse.json({
     ok: out.ok,
     action: b.action,

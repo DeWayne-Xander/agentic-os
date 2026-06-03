@@ -9,6 +9,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { GOALS_FILE } from "@/lib/vaultWriter";
 
 // ─── node:sqlite type shim ──────────────────────────────────────────────────
 // node:sqlite is available in Node >= 22 behind --experimental-sqlite.
@@ -143,38 +144,115 @@ function rowToTask(r: Record<string, unknown>): TaskRow {
   };
 }
 
+const GOAL_LINE = /^- \[( |x|X)\]\s+(?:\(([^)]+)\)\s+)?(.+?)(?:\s+<!--\s+([^>]+)\s+-->)?$/;
+
+function parseGoalMeta(meta: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const token of meta.split(/\s+/)) {
+    const idx = token.indexOf(":");
+    if (idx <= 0) continue;
+    const key = token.slice(0, idx).trim();
+    const value = token.slice(idx + 1).trim();
+    if (key) out[key] = value;
+  }
+  return out;
+}
+
+function inferGoalAssignee(title: string, category?: string): string {
+  const hay = `${title} ${category ?? ""}`.toLowerCase();
+  if (/(research|analy[sz]e|study|review|summar|summari[sz]e|investigat|reasoning|architecture|design|plan|memory|notebook)/.test(hay)) return "labyrinth";
+  if (/(telegram|schedule|notify|monitor|runtime|daemon|health|ops|cron|gateway|session|status|orchestr|triage)/.test(hay)) return "chrono";
+  if (/(code|build|fix|refactor|implement|debug|frontend|backend|api|typescript|workspace)/.test(hay)) return "codex";
+  return "chrono";
+}
+
+function readGoalMirrorTasks(): TaskRow[] {
+  if (!GOALS_FILE || !existsSync(GOALS_FILE)) return [];
+  try {
+    const content = readFileSync(GOALS_FILE, "utf8");
+    const out: TaskRow[] = [];
+    for (const line of content.split(/\r?\n/)) {
+      const m = line.match(GOAL_LINE);
+      if (!m) continue;
+      const meta = m[4] ? parseGoalMeta(m[4]) : {};
+      const title = m[3].trim();
+      const done = m[1].toLowerCase() === "x";
+      const createdAt = meta.createdAt ? Date.parse(meta.createdAt) : Date.now();
+      const assignee = meta.assignee || inferGoalAssignee(title, m[2] || undefined);
+      const taskId = meta.taskId || `goal_${meta.id || Math.random().toString(36).slice(2, 10)}`;
+      out.push({
+        id: taskId,
+        title,
+        body: [
+          `Mirrored from Agentic OS Goals`,
+          meta.id ? `Goal ID: ${meta.id}` : null,
+          meta.delegatedAt ? `Delegated: ${meta.delegatedAt}` : null,
+          meta.assignee ? `Assignee: ${meta.assignee}` : null,
+        ].filter(Boolean).join("\n"),
+        assignee,
+        status: done ? "done" : "triage",
+        priority: 0,
+        tenant: "agentic-os",
+        workspace_kind: "goal",
+        workspace_path: meta.id ? path.join(os.homedir(), "codex-scratch", meta.id) : null,
+        created_by: "goals",
+        created_at: Number.isNaN(createdAt) ? Math.floor(Date.now() / 1000) : Math.floor(createdAt / 1000),
+        started_at: meta.delegatedAt ? Math.floor(Date.parse(meta.delegatedAt) / 1000) : null,
+        completed_at: done ? Math.floor(Date.now() / 1000) : null,
+        result: done ? "Completed from Goals page" : null,
+        skills: [],
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function mergeTasks(primary: TaskRow[], mirror: TaskRow[]): TaskRow[] {
+  const seen = new Set<string>();
+  const out: TaskRow[] = [];
+  for (const task of [...mirror, ...primary]) {
+    if (seen.has(task.id)) continue;
+    seen.add(task.id);
+    out.push(task);
+  }
+  return out.sort((a, b) => b.created_at - a.created_at);
+}
+
 export function listTasks(slug?: string, includeArchived = true): TaskRow[] {
-  return guardDb(slug, (db) => {
+  const dbTasks = guardDb(slug, (db) => {
     const sql = includeArchived
       ? "SELECT * FROM tasks ORDER BY created_at DESC"
       : "SELECT * FROM tasks WHERE status != 'archived' ORDER BY created_at DESC";
     const rows = db.prepare(sql).all() as Record<string, unknown>[];
     return rows.map(rowToTask);
   }, []);
+  return mergeTasks(dbTasks, readGoalMirrorTasks());
 }
 
 export function statsFor(slug?: string): { by_status: Record<string, number>; by_assignee: Record<string, Record<string, number>>; oldest_ready_age_seconds: number | null; now: number } {
-  return guardDb(slug, (db) => {
-    const byStatus: Record<string, number> = {};
-    const byStatusRows = db.prepare("SELECT status, COUNT(*) as c FROM tasks GROUP BY status").all() as { status: string; c: number }[];
-    for (const r of byStatusRows) byStatus[r.status] = r.c;
-
-    const byAssignee: Record<string, Record<string, number>> = {};
-    const byAsigneeRows = db.prepare("SELECT assignee, status, COUNT(*) as c FROM tasks WHERE assignee IS NOT NULL GROUP BY assignee, status").all() as { assignee: string; status: string; c: number }[];
-    for (const r of byAsigneeRows) {
-      const a = byAssignee[r.assignee] ?? (byAssignee[r.assignee] = {});
-      a[r.status] = r.c;
+  const tasks = listTasks(slug, true);
+  const byStatus: Record<string, number> = {};
+  const byAssignee: Record<string, Record<string, number>> = {};
+  let oldestReady: number | null = null;
+  for (const task of tasks) {
+    byStatus[task.status] = (byStatus[task.status] ?? 0) + 1;
+    if (task.assignee) {
+      const a = byAssignee[task.assignee] ?? (byAssignee[task.assignee] = {});
+      a[task.status] = (a[task.status] ?? 0) + 1;
     }
-
-    const oldest = db.prepare("SELECT MIN(created_at) as t FROM tasks WHERE status = 'ready'").get() as { t: number | null } | undefined;
-    const now = Math.floor(Date.now() / 1000);
-    return {
-      by_status: byStatus,
-      by_assignee: byAssignee,
-      oldest_ready_age_seconds: oldest?.t ? now - oldest.t : null,
-      now,
-    };
-  }, { by_status: {}, by_assignee: {}, oldest_ready_age_seconds: null, now: Math.floor(Date.now() / 1000) });
+    if (task.status === "ready") {
+      oldestReady = oldestReady == null ? task.created_at : Math.min(oldestReady, task.created_at);
+    }
+  }
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    by_status: byStatus,
+    by_assignee: byAssignee,
+    oldest_ready_age_seconds: oldestReady ? now - oldestReady : null,
+    now,
+  };
 }
 
 function basicAssignees(): { name: string; on_disk: boolean; counts: Record<string, number> }[] {
@@ -189,30 +267,29 @@ function basicAssignees(): { name: string; on_disk: boolean; counts: Record<stri
 }
 
 export function assigneesFor(slug?: string): { name: string; on_disk: boolean; counts: Record<string, number> }[] {
-  return guardDb(slug, (db) => {
-    const rows = db.prepare("SELECT assignee, status, COUNT(*) as c FROM tasks WHERE assignee IS NOT NULL GROUP BY assignee, status").all() as { assignee: string; status: string; c: number }[];
-    const counts: Record<string, Record<string, number>> = {};
-    for (const r of rows) {
-      const a = counts[r.assignee] ?? (counts[r.assignee] = {});
-      a[r.status] = r.c;
-    }
-    const profiles = new Set(Object.keys(counts));
-    const profileRoot = path.join(HERMES_HOME, "profiles");
-    if (existsSync(profileRoot)) {
-      try {
-        for (const p of readdirSync(profileRoot)) {
-          try {
-            if (statSync(path.join(profileRoot, p)).isDirectory()) profiles.add(p);
-          } catch {}
-        }
-      } catch {}
-    }
-    return Array.from(profiles).sort().map((name) => ({
-      name,
-      on_disk: existsSync(path.join(profileRoot, name)),
-      counts: counts[name] ?? {},
-    }));
-  }, basicAssignees());
+  const tasks = listTasks(slug, true);
+  const counts: Record<string, Record<string, number>> = {};
+  for (const task of tasks) {
+    if (!task.assignee) continue;
+    const a = counts[task.assignee] ?? (counts[task.assignee] = {});
+    a[task.status] = (a[task.status] ?? 0) + 1;
+  }
+  const profiles = new Set(Object.keys(counts));
+  const profileRoot = path.join(HERMES_HOME, "profiles");
+  if (existsSync(profileRoot)) {
+    try {
+      for (const p of readdirSync(profileRoot)) {
+        try {
+          if (statSync(path.join(profileRoot, p)).isDirectory()) profiles.add(p);
+        } catch {}
+      }
+    } catch {}
+  }
+  return Array.from(profiles).sort().map((name) => ({
+    name,
+    on_disk: existsSync(path.join(profileRoot, name)),
+    counts: counts[name] ?? {},
+  }));
 }
 
 export function showTask(taskId: string, slug?: string): {
@@ -227,7 +304,20 @@ export function showTask(taskId: string, slug?: string): {
   if (!/^t_[a-z0-9_-]+$/i.test(taskId)) return null;
   return guardDb(slug, (db) => {
     const row = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as Record<string, unknown> | undefined;
-    if (!row) return null;
+    if (!row) {
+      const mirror = readGoalMirrorTasks();
+      const task = mirror.find((t) => t.id === taskId);
+      if (!task) return null;
+      return {
+        task,
+        latest_summary: task.result ?? null,
+        parents: [],
+        children: [],
+        comments: [],
+        events: [],
+        runs: [],
+      };
+    }
     const task = rowToTask(row);
 
     const parentRows = db.prepare(

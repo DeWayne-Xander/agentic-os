@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Mic, MicOff } from "lucide-react";
+import { Mic, MicOff, Square } from "lucide-react";
 
 // Web Speech API has no first-class TS types in lib.dom — type loosely.
 type SR = {
@@ -26,15 +26,76 @@ interface Props {
 export default function VoiceButton({ onTranscript, className = "", size = 36 }: Props) {
   const [active, setActive] = useState(false);
   const [supported, setSupported] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<"speech" | "record" | "none" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const recRef = useRef<SR | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaChunksRef = useRef<BlobPart[]>([]);
 
   useEffect(() => {
-    const C = (typeof window !== "undefined" && ((window as unknown as { SpeechRecognition?: new () => SR; webkitSpeechRecognition?: new () => SR }).SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: new () => SR }).webkitSpeechRecognition)) as undefined | { new(): SR };
-    setSupported(!!C);
+    const w = typeof window !== "undefined"
+      ? (window as unknown as {
+          SpeechRecognition?: new () => SR;
+          webkitSpeechRecognition?: new () => SR;
+          MediaRecorder?: typeof MediaRecorder;
+        })
+      : null;
+    const speech = !!(w?.SpeechRecognition || w?.webkitSpeechRecognition);
+    const record = !!(w?.MediaRecorder && navigator.mediaDevices?.getUserMedia);
+    setMode(speech ? "speech" : record ? "record" : "none");
+    setSupported(speech || record);
   }, []);
 
-  function start() {
+  async function transcribeRecordedAudio(blob: Blob) {
+    const form = new FormData();
+    form.append("audio", blob, "voice.webm");
+    const r = await fetch("/api/voice/transcribe", {
+      method: "POST",
+      body: form,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error || `transcribe failed (${r.status})`);
+    const text = String(j.text ?? "").trim();
+    if (text) onTranscript(text, { final: true });
+  }
+
+  async function startRecording() {
+    setError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      mediaChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) mediaChunksRef.current.push(ev.data);
+      };
+      recorder.onstop = async () => {
+        const chunks = mediaChunksRef.current.slice();
+        mediaChunksRef.current = [];
+        try {
+          stream.getTracks().forEach((t) => t.stop());
+        } catch {}
+        mediaRecorderRef.current = null;
+        mediaStreamRef.current = null;
+        setActive(false);
+        if (!chunks.length) return;
+        try {
+          await transcribeRecordedAudio(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }));
+        } catch (e) {
+          setError(String(e));
+        }
+      };
+      recorder.start();
+      setActive(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setActive(false);
+    }
+  }
+
+  function startSpeech() {
     setError(null);
     const C = (typeof window !== "undefined" && ((window as unknown as { SpeechRecognition?: new () => SR; webkitSpeechRecognition?: new () => SR }).SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: new () => SR }).webkitSpeechRecognition)) as undefined | { new(): SR };
     if (!C) { setError("Voice not supported in this browser. Use Chrome or Safari."); return; }
@@ -65,14 +126,32 @@ export default function VoiceButton({ onTranscript, className = "", size = 36 }:
   }
 
   function stop() {
+    if (mode === "record") {
+      try { mediaRecorderRef.current?.stop(); } catch {}
+      return;
+    }
     try { recRef.current?.stop(); } catch {}
     setActive(false);
   }
 
-  if (supported === false) {
+  async function start() {
+    if (mode === "speech") return startSpeech();
+    if (mode === "record") return startRecording();
+    setError("Voice input requires a secure browser connection.");
+  }
+
+  useEffect(() => {
+    return () => {
+      try { recRef.current?.abort(); } catch {}
+      try { mediaRecorderRef.current?.stop(); } catch {}
+      try { mediaStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch {}
+    };
+  }, []);
+
+  if (supported === false || mode === "none") {
     return (
       <button
-        title="Voice input requires Chrome or Safari"
+        title="Voice input requires a secure browser connection"
         disabled
         className={`grid place-items-center rounded-lg border border-[var(--panel-border)] text-[var(--fg-dimmer)] opacity-50 cursor-not-allowed ${className}`}
         style={{ width: size, height: size }}
@@ -87,7 +166,7 @@ export default function VoiceButton({ onTranscript, className = "", size = 36 }:
       <motion.button
         onClick={active ? stop : start}
         whileTap={{ scale: 0.92 }}
-        title={active ? "Stop recording (or finish speaking)" : "Speak to type"}
+        title={active ? "Stop recording (or finish speaking)" : (mode === "record" ? "Record voice note" : "Speak to type")}
         className={`relative grid place-items-center rounded-lg border transition ${className}`}
         style={{
           width: size, height: size,

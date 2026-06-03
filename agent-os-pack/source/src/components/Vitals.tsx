@@ -19,13 +19,13 @@ function VitalTile({ label, icon, primary, sub, status, href }: {
   label: string; icon: ReactNode; primary: ReactNode; sub?: string; status: "ok" | "warn" | "err" | "info"; href?: string;
 }) {
   const inner = (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="vital-tile">
+    <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="vital-tile">
       <div className="flex items-center justify-between">
-        <span className="k flex items-center gap-1.5"><span style={{ color: "var(--gold)" }}>{icon}</span>{label}</span>
+        <span className="k flex items-center gap-1.5" style={{ fontSize: "0.6rem" }}><span style={{ color: "var(--gold)" }}>{icon}</span>{label}</span>
         <span className={`status-dot ${status}`} />
       </div>
-      <div className="v">{primary}</div>
-      {sub && <div className="sub truncate">{sub}</div>}
+      <div className="v" style={{ fontSize: "0.95rem" }}>{primary}</div>
+      {sub && <div className="sub truncate text-[10px]">{sub}</div>}
     </motion.div>
   );
   if (href) return <a href={href} className="block">{inner}</a>;
@@ -48,7 +48,7 @@ export default function Vitals() {
   useEffect(() => { /* polling via usePollWhileVisible */ }, []);
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-2.5">
       <VitalTile label="Asta" icon={<Sparkles size={12} />} primary={data?.claude.ok ? "Online" : "…"}
         sub={data ? `${data.claude.version.split(" ")[0]} · ${data.claude.latencyMs}ms` : "checking…"} status={data?.claude.ok ? "ok" : "warn"} />
       <VitalTile label="Kairos" icon={<Box size={12} />} primary={data?.openclaw.ok ? (data.openclaw.degraded ? "Degraded" : data.openclaw.busy ? "Busy" : "Ready") : "…"}

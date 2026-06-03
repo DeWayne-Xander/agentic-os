@@ -10,6 +10,12 @@ import {
   type ReactNode,
 } from "react";
 import { logChatTurn } from "@/lib/chatMemory";
+import {
+  loadSharedMissionControlState,
+  saveSharedMissionControlState,
+  chatStoreToTree,
+  treeToChatStore,
+} from "@/lib/state-manager";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -37,6 +43,12 @@ interface StreamHandle {
   alive: boolean;
 }
 
+interface StartStreamOptions {
+  apiPath?: string;
+  body?: Record<string, unknown>;
+  headers?: Record<string, string>;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
@@ -53,7 +65,11 @@ const SS_KEY = "chat:global";
 let idCounter = 0;
 function uid(): string {
   idCounter += 1;
-  return `m_${Date.now().toString(36)}_${idCounter.toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  const cryptoId =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID().replace(/-/g, "")
+      : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  return `m_${Date.now().toString(36)}_${idCounter.toString(36)}_${cryptoId.slice(0, 12)}`;
 }
 
 function dedupeMessages(msgs: ChatMessage[]): ChatMessage[] {
@@ -146,13 +162,17 @@ interface ChatContextValue {
 
   /* ---------- streaming API ---------- */
   /** Start streaming from an agent. Returns the placeholder message id. */
-  startStream: (agent: string, userText: string) => string | null;
+  startStream: (agent: string, userText: string, options?: StartStreamOptions) => string | null;
   /** Subscribe to streaming chunks for an agent. Returns an unsubscribe fn. */
   onStreamChunk: (agent: string, cb: (chunk: string, done: boolean) => void) => () => void;
   /** Current streaming message id per agent (empty if none) */
   streamingId: (agent: string) => string | null;
   /** Abort an in-progress stream */
   abortStream: (agent: string) => void;
+
+  /* ---------- bridge API for EnhancedChatContext ---------- */
+  /** Return a snapshot of the full store (for cross-format sync) */
+  getStore: () => ChatStore;
 }
 
 /* ------------------------------------------------------------------ */
@@ -180,6 +200,7 @@ export function useChatContext() {
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [, setTick] = useState(0);
   const storeRef = useRef<ChatStore>({});
+  const [hydrated, setHydrated] = useState(false);
 
   /* --- active streams map --- */
   const streamsRef = useRef<Map<string, StreamHandle>>(new Map());
@@ -192,19 +213,26 @@ export function ChatProvider({ children }: { children: ReactNode }) {
    *  Also migrates legacy ClaudePanel localStorage ("agentic-os-chat-v2:claude")
    *  into the global store so old chat history is never lost. */
   useEffect(() => {
+    let alive = true;
     const local = loadFromLocal();
     const session = loadFromSession();
     // session (hot) wins over local (long-lived) for overlapping keys
-    let store: ChatStore = { ...local, ...session };
+    const localStore: ChatStore = { ...local, ...session };
 
-    // ── Migrate legacy ClaudePanel localStorage ──
+    // ── Migrate legacy CodexPanel localStorage ──
     if (LS_AVAILABLE) {
       try {
-        const legacy = localStorage.getItem("agentic-os-chat-v2:claude");
-        if (legacy) {
+        const legacyKeys = [
+          { source: "agentic-os-chat-v2:codex", target: "codex" },
+          { source: "agentic-os-chat-v2:claude", target: "codex" },
+        ] as const;
+        for (const { source, target } of legacyKeys) {
+          if (store[target]?.length) continue;
+          const legacy = localStorage.getItem(source);
+          if (!legacy) continue;
           const parsed = JSON.parse(legacy);
-          if (Array.isArray(parsed) && parsed.length > 0 && !store["claude"]) {
-            store["claude"] = parsed.map((m: { role: string; text: string; ts: number }) => ({
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            localStore[target] = parsed.map((m: { role: string; text: string; ts: number }) => ({
               id: `legacy_${m.ts}_${Math.random().toString(36).slice(2, 6)}`,
               role: m.role as "user" | "assistant",
               text: m.text,
@@ -217,18 +245,45 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    storeRef.current = store;
-    saveStore(store); // persist merged back to both layers
+    const hydrate = async () => {
+      const shared = await loadSharedMissionControlState();
+      const store = shared?.tree && Object.keys(shared.tree).length > 0
+        ? normalizeStore(treeToChatStore(shared.tree))
+        : normalizeStore(localStore);
+      if (!alive) return;
+      storeRef.current = store;
+      saveStore(store); // persist merged back to both layers
+      setTick((t) => t + 1);
+      setHydrated(true);
+    };
+
+    void hydrate();
+
+    const syncFromShared = async () => {
+      const shared = await loadSharedMissionControlState();
+      if (!alive || !shared?.tree) return;
+      const incoming = normalizeStore(treeToChatStore(shared.tree));
+      const current = storeRef.current;
+      const currentJson = JSON.stringify(current);
+      const incomingJson = JSON.stringify(incoming);
+      if (currentJson === incomingJson) return;
+      storeRef.current = incoming;
+      saveStore(incoming);
+      setTick((t) => t + 1);
+    };
 
     const handler = () => {
       storeRef.current = loadStore();
       setTick((t) => t + 1);
     };
+    const syncTimer = window.setInterval(syncFromShared, 2500);
     window.addEventListener("chat:update", handler);
     window.addEventListener("storage", handler);
     const agents = ["antigravity", "labyrinth", "claude", "codex", "openclaw", "chrono"];
     agents.forEach((a) => window.addEventListener(`chat:${a}`, handler));
     return () => {
+      alive = false;
+      window.clearInterval(syncTimer);
       window.removeEventListener("chat:update", handler);
       window.removeEventListener("storage", handler);
       agents.forEach((a) => window.removeEventListener(`chat:${a}`, handler));
@@ -292,27 +347,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return streamsRef.current.get(agent)?.msgId ?? null;
   }, []);
 
-  const abortStream = useCallback((agent: string) => {
-    const handle = streamsRef.current.get(agent);
-    if (handle) {
-      handle.alive = false;
-      try {
-        handle.controller.abort();
-      } catch {
-        /* noop */
-      }
-      handle.listeners.forEach((cb) => {
-        try {
-          cb(handle.text, true);
-        } catch {
-          /* noop */
-        }
-      });
-      handle.listeners.clear();
-      streamsRef.current.delete(agent);
-    }
-  }, []);
-
   /** Append a message to the persistent chat store */
   const appendMessage = useCallback((key: string, msg: ChatMessage) => {
     const store = loadStore();
@@ -320,6 +354,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (!store[key].some((m) => m.id === msg.id)) store[key].push(msg);
     store[key] = dedupeMessages(store[key]);
     saveStore(store);
+    void saveSharedMissionControlState({ tree: chatStoreToTree(store) });
     if (SS_AVAILABLE) {
       try {
         sessionStorage.setItem(`chat:${key}`, JSON.stringify(store[key]));
@@ -335,6 +370,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const store = loadStore();
     store[key] = [];
     saveStore(store);
+    void saveSharedMissionControlState({ tree: chatStoreToTree(store) });
     if (SS_AVAILABLE) {
       try {
         sessionStorage.removeItem(`chat:${key}`);
@@ -346,17 +382,91 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     emitEvent(`chat:${key}`);
   }, []);
 
+  const updateMessage = useCallback((key: string, msgId: string, text: string, pending: boolean) => {
+    const store = loadStore();
+    const msgs = store[key];
+    if (!msgs) return;
+    const idx = msgs.findIndex((m) => m.id === msgId);
+    if (idx < 0) return;
+    msgs[idx] = { ...msgs[idx], text, pending };
+    saveStore(store);
+    void saveSharedMissionControlState({ tree: chatStoreToTree(store) });
+    if (SS_AVAILABLE) {
+      try {
+        sessionStorage.setItem(`chat:${key}`, JSON.stringify(msgs));
+      } catch {
+        /* quota */
+      }
+    }
+    emitEvent("chat:update");
+    emitEvent(`chat:${key}`);
+  }, []);
+
+  const removeMessage = useCallback((key: string, msgId: string) => {
+    const store = loadStore();
+    const msgs = store[key];
+    if (!msgs) return;
+    store[key] = msgs.filter((m) => m.id !== msgId);
+    saveStore(store);
+    void saveSharedMissionControlState({ tree: chatStoreToTree(store) });
+    if (SS_AVAILABLE) {
+      try {
+        sessionStorage.setItem(`chat:${key}`, JSON.stringify(store[key]));
+      } catch {
+        /* quota */
+      }
+    }
+    emitEvent("chat:update");
+    emitEvent(`chat:${key}`);
+  }, []);
+
+  const abortStream = useCallback((agent: string) => {
+    const handle = streamsRef.current.get(agent);
+    if (handle) {
+      handle.alive = false;
+      try {
+        handle.controller.abort();
+      } catch {
+        /* noop */
+      }
+      if (handle.text.trim()) {
+        updateMessage(agent, handle.msgId, handle.text, false);
+      } else if (handle.msgId) {
+        removeMessage(agent, handle.msgId);
+      }
+      handle.listeners.forEach((cb) => {
+        try {
+          cb(handle.text, true);
+        } catch {
+          /* noop */
+        }
+      });
+      handle.listeners.clear();
+      streamsRef.current.delete(agent);
+    }
+  }, [removeMessage, updateMessage]);
+
   /**
    * Initiate a streaming agent request and spin the reader loop
    * entirely inside this provider (never in a component).
    */
   const startStream = useCallback(
-    (agent: string, userText: string): string | null => {
+    (agent: string, userText: string, options?: StartStreamOptions): string | null => {
       // Abort any existing stream for this agent
       abortStream(agent);
 
       const msgId = uid();
       const controller = new AbortController();
+      const apiPath = options?.apiPath ?? `/api/${agent === "chrono" ? "hermes" : agent}/chat`;
+      const requestBody = {
+        prompt: userText,
+        agent,
+        ...(options?.body ?? {}),
+      };
+      const requestHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(options?.headers ?? {}),
+      };
 
       const handle: StreamHandle = {
         agent,
@@ -386,10 +496,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       });
 
       // Fire the fetch (infinite timeout — no runtime cap)
-      fetch(`/api/${agent === "chrono" ? "hermes" : agent}/chat`, {
+      fetch(apiPath, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: userText, agent }),
+        headers: requestHeaders,
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       })
         .then(async (resp) => {
@@ -596,6 +706,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const getStore = useCallback((): ChatStore => {
+    return storeRef.current;
+  }, []);
+
   return (
     <ChatContext.Provider
       value={{
@@ -606,9 +720,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         onStreamChunk,
         streamingId,
         abortStream,
+        getStore,
       }}
     >
-      {children}
+      {hydrated ? children : null}
     </ChatContext.Provider>
   );
 }

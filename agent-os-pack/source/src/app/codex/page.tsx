@@ -13,7 +13,7 @@ export default function CodexRoute() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap overflow-x-auto no-scrollbar pb-1">
         {([
           { key: "chat", label: "Chat", icon: <MessageSquare size={14} /> },
           { key: "workspace", label: "Workspace", icon: <Layers size={14} /> },
@@ -24,7 +24,7 @@ export default function CodexRoute() {
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-[12.5px] transition"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-[12.5px] whitespace-nowrap transition"
               style={{
                 background: active ? "rgba(34,197,94,0.16)" : "transparent",
                 borderColor: active ? "#22c55e" : "var(--panel-border)",

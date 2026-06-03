@@ -304,6 +304,30 @@ export function StreamProvider({ children }: { children: ReactNode }) {
       };
       streamsRef.current.set(agent, handle);
 
+      // ─── VAULT LOGGING: fire-and-forget on stream completion ───
+      let vaultLogSent = false;
+      const logToVault = () => {
+        if (vaultLogSent) return;
+        vaultLogSent = true;
+        const agentLabel = agent === "chrono" ? "Chrono" :
+          agent === "openclaw" ? "Kairos" :
+          agent === "claude" ? "Asta" :
+          agent === "labyrinth" ? "Labyrinth" :
+          agent === "antigravity" ? "Antigravity" :
+          agent;
+        fetch("/api/memory/log", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            agent: agent,
+            kind: "chat",
+            user: userText.slice(0, 4000),
+            reply: handle.text.slice(0, 8000),
+            source: "web",
+          }),
+        }).catch(() => { /* ignore vault logging failures */ });
+      };
+
       // Stream fetch with routing metadata in headers
       fetch(`/api/${apiTarget}/chat`, {
         method: "POST",
@@ -350,6 +374,8 @@ export function StreamProvider({ children }: { children: ReactNode }) {
                   text: handle.text,
                   ts: Date.now(),
                 });
+                // Log completed chat turn to Obsidian vault
+                logToVault();
                 handle.listeners.clear();
                 streamsRef.current.delete(agent);
                 setTick((t) => t + 1);

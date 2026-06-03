@@ -5,9 +5,22 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Target, X, Check, Tag } from "lucide-react";
 import VoiceButton from "./VoiceButton";
 
-interface Goal { id: string; text: string; done: boolean; category?: string; createdAt: string; }
+interface Goal {
+  id: string;
+  text: string;
+  done: boolean;
+  category?: string;
+  createdAt: string;
+  taskId?: string;
+  assignee?: string;
+  delegatedAt?: string;
+}
 
 const CATEGORIES = ["YouTube", "AIPB", "SEO", "Health", "Personal", "Goldie Agency"];
+
+function cleanGoalText(text: string): string {
+  return text.replace(/<!--[\s\S]*?-->/g, "").replace(/\s+/g, " ").trim();
+}
 
 export default function GoalsView() {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -70,7 +83,7 @@ export default function GoalsView() {
   return (
     <div className="space-y-6">
       {/* Stats hero */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Total" value={String(stats.total)} accent="#22d3ee" />
         <Stat label="Active" value={String(stats.open)} accent="#a855f7" />
         <Stat label="Completed" value={String(stats.done)} accent="#86efac" />
@@ -83,19 +96,19 @@ export default function GoalsView() {
           <Target size={16} className="text-[var(--accent-cyan)]" />
           <h3 className="text-sm font-medium">Add a goal</h3>
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <VoiceButton onTranscript={(t, o) => { if (o.final) setInput((v) => (v ? v + " " : "") + t); }} size={38} />
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
             placeholder="What's the goal? (Enter to add)"
-            className="flex-1 bg-[rgba(0,0,0,0.25)] border border-[var(--panel-border)] rounded-lg px-3 h-[38px] text-sm outline-none focus:border-[var(--panel-border-hot)] text-[var(--fg)]"
+            className="flex-1 w-full bg-[rgba(0,0,0,0.25)] border border-[var(--panel-border)] rounded-lg px-3 h-[38px] text-sm outline-none focus:border-[var(--panel-border-hot)] text-[var(--fg)]"
           />
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="bg-[rgba(0,0,0,0.25)] border border-[var(--panel-border)] rounded-lg px-2 h-[38px] text-sm text-[var(--fg-dim)]"
+            className="w-full sm:w-auto bg-[rgba(0,0,0,0.25)] border border-[var(--panel-border)] rounded-lg px-2 h-[38px] text-sm text-[var(--fg-dim)]"
           >
             <option value="">No category</option>
             {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -103,7 +116,7 @@ export default function GoalsView() {
           <button
             onClick={add}
             disabled={!input.trim() || busy}
-            className="px-3 h-[38px] rounded-lg flex items-center gap-1.5 text-sm transition disabled:opacity-40"
+            className="w-full sm:w-auto px-3 h-[38px] rounded-lg flex items-center justify-center gap-1.5 text-sm transition disabled:opacity-40"
             style={{
               background: "rgba(34,211,238,0.18)",
               border: "1px solid rgba(34,211,238,0.5)",
@@ -116,12 +129,12 @@ export default function GoalsView() {
       </div>
 
       {/* Filter pills */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
         {(["active", "done", "all"] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className="px-3 py-1.5 rounded-full text-[12px] border transition"
+            className="px-3 py-1.5 rounded-full text-[12px] border whitespace-nowrap transition"
             style={{
               background: filter === f ? "rgba(168,85,247,0.16)" : "transparent",
               borderColor: filter === f ? "#a855f7" : "var(--panel-border)",
@@ -153,7 +166,7 @@ export default function GoalsView() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.2 }}
-              className="panel panel-hover p-3 flex items-center gap-3"
+              className="panel panel-hover p-3 flex flex-col sm:flex-row sm:items-center gap-3"
             >
               <button
                 onClick={() => toggle(g)}
@@ -166,14 +179,25 @@ export default function GoalsView() {
               >
                 {g.done && <Check size={12} className="text-emerald-300" />}
               </button>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 w-full">
                 <div className={`text-[14px] ${g.done ? "line-through text-[var(--fg-dimmer)]" : "text-[var(--fg)]"}`}>
-                  {g.text}
+                  {cleanGoalText(g.text)}
                 </div>
                 <div className="text-[10px] uppercase tracking-widest text-[var(--fg-dimmer)] mt-0.5 flex items-center gap-2">
                   {g.category && <span className="inline-flex items-center gap-1"><Tag size={9} />{g.category}</span>}
                   <span>{new Date(g.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</span>
+                  {g.taskId && (
+                    <span className="inline-flex items-center gap-1 text-emerald-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                      delegated to {g.assignee ?? "agents"}
+                    </span>
+                  )}
                 </div>
+                {g.taskId && (
+                  <div className="mt-1 text-[10px] text-[var(--fg-dimmer)]">
+                    Kanban task {g.taskId}{g.delegatedAt ? ` · mirrored ${new Date(g.delegatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => remove(g.id)}

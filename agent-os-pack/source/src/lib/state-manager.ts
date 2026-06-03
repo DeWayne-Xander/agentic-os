@@ -47,6 +47,13 @@ export interface EngineContext {
   startedAt: number;
 }
 
+export interface SharedMissionControlState {
+  tree?: ConversationTree;
+  context?: EngineContext | null;
+  sessionId?: string;
+  updatedAt?: number;
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────
 
 function isClient(): boolean {
@@ -81,6 +88,36 @@ function ssSet(key: string, value: string) {
 function ssDel(key: string) {
   if (!isClient()) return;
   try { sessionStorage.removeItem(key); } catch { /* ignore */ }
+}
+
+const SHARED_STATE_ENDPOINT = "/api/state";
+
+export async function loadSharedMissionControlState(): Promise<SharedMissionControlState | null> {
+  if (!isClient()) return null;
+  try {
+    const resp = await fetch(SHARED_STATE_ENDPOINT, { cache: "no-store" });
+    if (!resp.ok) return null;
+    return (await resp.json()) as SharedMissionControlState;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveSharedMissionControlState(
+  patch: Partial<SharedMissionControlState>
+): Promise<SharedMissionControlState | null> {
+  if (!isClient()) return null;
+  try {
+    const resp = await fetch(SHARED_STATE_ENDPOINT, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!resp.ok) return null;
+    return (await resp.json()) as SharedMissionControlState;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Conversation Tree CRUD ────────────────────────────────────────
@@ -194,4 +231,35 @@ export function exportAllState(): { tree: ConversationTree; context: EngineConte
 export function importState(data: { tree?: ConversationTree; context?: EngineContext }) {
   if (data.tree) saveConversationTree(data.tree);
   if (data.context) saveEngineContext(data.context);
+}
+
+// ─── Format bridges (ChatMessage[] ↔ ConversationNode[]) ──────────
+
+/** Convert a flat ChatStore (ChatMessage[]) to a ConversationTree (ConversationNode[]) */
+export function chatStoreToTree(store: Record<string, Array<{ id: string; role: "user" | "assistant"; text: string; ts: number }>>): ConversationTree {
+  const tree: ConversationTree = {};
+  for (const [agent, messages] of Object.entries(store)) {
+    tree[agent] = messages.map((m) => ({
+      agent,
+      msgId: m.id,
+      role: m.role,
+      text: m.text,
+      ts: m.ts,
+    }));
+  }
+  return tree;
+}
+
+/** Convert a ConversationTree (ConversationNode[]) to a flat ChatStore (ChatMessage[]) */
+export function treeToChatStore(tree: ConversationTree): Record<string, Array<{ id: string; role: "user" | "assistant"; text: string; ts: number; pending?: boolean }>> {
+  const store: Record<string, Array<{ id: string; role: "user" | "assistant"; text: string; ts: number; pending?: boolean }>> = {};
+  for (const [agent, nodes] of Object.entries(tree)) {
+    store[agent] = nodes.map((n) => ({
+      id: n.msgId,
+      role: n.role,
+      text: n.text,
+      ts: n.ts,
+    }));
+  }
+  return store;
 }

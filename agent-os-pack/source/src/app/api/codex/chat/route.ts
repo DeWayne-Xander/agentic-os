@@ -20,9 +20,44 @@ export async function POST(req: Request) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     start(controller) {
-      child.stdout.on("data", (b: Buffer) => controller.enqueue(encoder.encode(b.toString())));
+      let buffer = "";
+      const emit = (text: string) => {
+        const cleaned = text.trim();
+        if (cleaned) {
+          controller.enqueue(encoder.encode(JSON.stringify({ type: "text", text: cleaned }) + "\n"));
+        }
+      };
+
+      child.stdout.on("data", (b: Buffer) => {
+        buffer += b.toString();
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const parsed = JSON.parse(trimmed);
+            const item = parsed?.item;
+            if (parsed?.type === "item.completed" && item?.type === "agent_message" && typeof item.text === "string") {
+              emit(item.text);
+              continue;
+            }
+            if (parsed?.type === "done") {
+              controller.enqueue(encoder.encode(JSON.stringify({ type: "done", code: parsed.code ?? 0 }) + "\n"));
+              controller.close();
+              return;
+            }
+          } catch {
+            emit(trimmed);
+          }
+        }
+      });
       child.stderr.on("data", (b: Buffer) => controller.enqueue(encoder.encode(JSON.stringify({ type: "stderr", text: b.toString() }) + "\n")));
-      child.on("close", (code) => { controller.enqueue(encoder.encode(JSON.stringify({ type: "done", code }) + "\n")); controller.close(); });
+      child.on("close", (code) => {
+        if (buffer.trim()) emit(buffer);
+        controller.enqueue(encoder.encode(JSON.stringify({ type: "done", code }) + "\n"));
+        controller.close();
+      });
       child.on("error", (e) => { controller.enqueue(encoder.encode(JSON.stringify({ type: "error", message: String(e) }) + "\n")); controller.close(); });
     },
     cancel() { try { child.kill("SIGTERM"); } catch {} },

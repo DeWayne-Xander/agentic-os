@@ -189,6 +189,39 @@ export default function CodexPanel() {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const interimRef = useRef<string>("");
 
+  function extractStreamText(evt: unknown): string {
+    if (!evt || typeof evt !== "object") return "";
+    const obj = evt as {
+      type?: unknown;
+      text?: unknown;
+      result?: unknown;
+      output_text?: unknown;
+      output?: unknown;
+      item?: {
+        text?: unknown;
+        content?: unknown;
+        output_text?: unknown;
+        aggregated_output?: unknown;
+        result?: unknown;
+      };
+    };
+    if (obj.type === "stderr" || obj.type === "debug" || obj.type === "log") return "";
+    if (typeof obj.text === "string" && obj.text.trim()) return obj.text;
+    if (typeof obj.result === "string" && obj.result.trim()) return obj.result;
+    if (typeof obj.output_text === "string" && obj.output_text.trim()) return obj.output_text;
+    if (typeof obj.output === "string" && obj.output.trim()) return obj.output;
+    if (obj.item && typeof obj.item === "object") {
+      if (typeof obj.item.text === "string" && obj.item.text.trim()) return obj.item.text;
+      if (typeof obj.item.content === "string" && obj.item.content.trim()) return obj.item.content;
+      if (typeof obj.item.output_text === "string" && obj.item.output_text.trim()) return obj.item.output_text;
+      if (typeof obj.item.aggregated_output === "string" && obj.item.aggregated_output.trim()) {
+        return obj.item.aggregated_output;
+      }
+      if (typeof obj.item.result === "string" && obj.item.result.trim()) return obj.item.result;
+    }
+    return "";
+  }
+
   /* ─── Slash autocomplete ────────────────────────────────────────── */
   const [showSlash, setShowSlash] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -291,17 +324,19 @@ export default function CodexPanel() {
         if (!line.trim()) continue;
         try {
           const evt = JSON.parse(line);
-          if (evt.type === "stream_event" && evt.event?.delta?.text) {
-            acc += evt.event.delta.text;
+          const chunk =
+            evt.type === "stream_event" && typeof evt.event?.delta?.text === "string"
+              ? evt.event.delta.text
+              : evt.type === "item.completed" || evt.type === "result" || evt.type === "message"
+                ? extractStreamText(evt)
+                : extractStreamText(evt);
+          if (chunk) {
+            acc += chunk;
             setPartial(acc);
-          } else if (evt.type === "result" && typeof evt.result === "string") {
-            if (!acc) {
-              acc = evt.result;
-              setPartial(acc);
-            }
           }
         } catch {
-          /* skip */
+          // Ignore non-JSON chatter from the CLI; the real assistant text
+          // arrives as structured events.
         }
       }
     }

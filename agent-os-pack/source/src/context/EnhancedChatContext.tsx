@@ -19,6 +19,8 @@ import {
   saveEngineContext,
   loadEngineContext,
   getOrCreateSessionId,
+  loadSharedMissionControlState,
+  saveSharedMissionControlState,
   type ConversationNode,
   type EngineContext,
 } from "@/lib/state-manager";
@@ -108,22 +110,63 @@ export function EnhancedChatProvider({ children }: { children: ReactNode }) {
   const [, setTick] = useState(0);
   const streamsRef = useRef<Map<string, EnhancedStreamHandle>>(new Map());
   const [engineCtx, setEngineCtxState] = useState<EngineContext | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   // Initialize engine context
   useEffect(() => {
-    const ctx = loadEngineContext();
-    if (ctx) {
-      setEngineCtxState(ctx);
-    } else {
-      const fresh: EngineContext = {
-        activeModel: "openrouter/owl-alpha",
-        activeTier: "heavy",
-        sessionId: getOrCreateSessionId(),
-        startedAt: Date.now(),
-      };
-      saveEngineContext(fresh);
-      setEngineCtxState(fresh);
-    }
+    let alive = true;
+    const hydrate = async () => {
+      const shared = await loadSharedMissionControlState();
+      const remoteCtx = shared?.context ?? null;
+      if (remoteCtx) {
+        saveEngineContext(remoteCtx);
+        if (alive) setEngineCtxState(remoteCtx);
+      } else {
+        const ctx = loadEngineContext();
+        if (ctx) {
+          if (alive) setEngineCtxState(ctx);
+        } else {
+          const fresh: EngineContext = {
+            activeModel: "openrouter/owl-alpha",
+            activeTier: "heavy",
+            sessionId: getOrCreateSessionId(),
+            startedAt: Date.now(),
+          };
+          saveEngineContext(fresh);
+          void saveSharedMissionControlState({ context: fresh, sessionId: fresh.sessionId });
+          if (alive) setEngineCtxState(fresh);
+        }
+      }
+      if (alive) setHydrated(true);
+    };
+
+    void hydrate();
+
+    const syncTimer = window.setInterval(async () => {
+      const shared = await loadSharedMissionControlState();
+      if (!alive || !shared) return;
+
+      if (shared.context) {
+        const current = loadEngineContext();
+        if (JSON.stringify(current) !== JSON.stringify(shared.context)) {
+          saveEngineContext(shared.context);
+          if (alive) setEngineCtxState(shared.context);
+        }
+      }
+
+      if (shared.tree) {
+        const existingTree = loadConversationTree();
+        if (JSON.stringify(existingTree) !== JSON.stringify(shared.tree)) {
+          saveConversationTree(shared.tree);
+          setTick((t) => t + 1);
+        }
+      }
+    }, 2500);
+
+    return () => {
+      alive = false;
+      window.clearInterval(syncTimer);
+    };
   }, []);
 
   // ── Sync conversations from legacy ChatContext ──
@@ -220,6 +263,7 @@ export function EnhancedChatProvider({ children }: { children: ReactNode }) {
         startedAt: Date.now(),
       };
       saveEngineContext(ctx);
+      void saveSharedMissionControlState({ context: ctx, sessionId: ctx.sessionId });
       setEngineCtxState(ctx);
 
       const metrics: EnhancedStreamMetrics = {
@@ -239,6 +283,7 @@ export function EnhancedChatProvider({ children }: { children: ReactNode }) {
 
       // Persist user message
       appendConversationNode({ agent, msgId: `user_${msgId}`, role: "user", text: userText, ts: Date.now() });
+      void saveSharedMissionControlState({ tree: loadConversationTree() });
 
       // Call legacy startStream so existing API routes still work
       const legacyMsgId = legacy.startStream(agent, userText);
@@ -271,6 +316,7 @@ export function EnhancedChatProvider({ children }: { children: ReactNode }) {
                   agent, msgId, role: "assistant", text: handle.text, ts: Date.now(),
                   engineContext: { tier: route.tier, model: route.model },
                 });
+                void saveSharedMissionControlState({ tree: loadConversationTree() });
                 void logChatTurn({ agent, user: userText, reply: handle.text, source: "enhanced" });
                 handle.listeners.forEach((cb) => {
                   try { cb("", true, handle.metrics); } catch { /* noop */ }
@@ -356,11 +402,13 @@ export function EnhancedChatProvider({ children }: { children: ReactNode }) {
   const getPersistedChat = useCallback((agent: string) => getConversation(agent), []);
   const appendNode = useCallback((node: ConversationNode) => {
     appendConversationNode(node);
+    void saveSharedMissionControlState({ tree: loadConversationTree() });
     setTick((t) => t + 1);
   }, []);
   const clearAgent = useCallback((agent: string) => {
     clearConversation(agent);
     legacy.clearChat(agent);
+    void saveSharedMissionControlState({ tree: loadConversationTree() });
     setTick((t) => t + 1);
   }, [legacy]);
 
@@ -382,7 +430,7 @@ export function EnhancedChatProvider({ children }: { children: ReactNode }) {
 
   return (
     <EnhancedChatContext.Provider value={value}>
-      {children}
+      {hydrated ? children : null}
     </EnhancedChatContext.Provider>
   );
 }

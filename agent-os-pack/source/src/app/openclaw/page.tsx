@@ -8,17 +8,17 @@ import OpenClawWorkspace from "@/components/OpenClawWorkspace";
 export default function OpenClawRoute() {
   const [tab, setTab] = useState<"chat" | "workspace" | "control">("chat");
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-2 flex-wrap">
+    <div className="space-y-5" style={{ minHeight: "calc(100svh - 180px)" }}>
+      <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1 mx-0 px-0 sm:overflow-visible sm:flex-wrap">
         {([
           { key: "chat", label: "Chat", icon: <MessageSquare size={14} /> },
           { key: "workspace", label: "Workspace", icon: <Layers size={14} /> },
           { key: "control", label: "Control Room", icon: <Terminal size={14} /> },
         ] as const).map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-[12.5px] transition"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-full border text-[11px] sm:text-[12.5px] whitespace-nowrap transition flex-shrink-0"
             style={{
-              background: tab === t.key ? "rgba(244,114,182,0.16)" : "transparent",
+              background: tab === t.key ? "rgba(244,114,182,0.16)" : "rgba(255,255,255,0.02)",
               borderColor: tab === t.key ? "#f472b6" : "var(--panel-border)",
               color: tab === t.key ? "var(--fg)" : "var(--fg-dim)",
             }}>

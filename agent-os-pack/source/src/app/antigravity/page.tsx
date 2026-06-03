@@ -11,8 +11,8 @@ export default function AntigravityRoute() {
   const [tab, setTab] = useState<AntigravityTab>("chat");
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-2">
+    <div className="space-y-5" style={{ minHeight: "calc(100svh - 180px)" }}>
+      <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1 mx-0 px-0 sm:overflow-visible sm:flex-wrap">
         {([
           { key: "chat", label: "Chat", icon: <MessageSquare size={14} /> },
           { key: "control", label: "Control Room", icon: <Terminal size={14} /> },
@@ -22,9 +22,9 @@ export default function AntigravityRoute() {
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-[12.5px] transition"
+              className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-full border text-[11px] sm:text-[12.5px] whitespace-nowrap transition flex-shrink-0"
               style={{
-                background: active ? "rgba(124,58,237,0.16)" : "transparent",
+                background: active ? "rgba(124,58,237,0.16)" : "rgba(255,255,255,0.02)",
                 borderColor: active ? "#7c3aed" : "var(--panel-border)",
                 color: active ? "var(--fg)" : "var(--fg-dim)",
               }}

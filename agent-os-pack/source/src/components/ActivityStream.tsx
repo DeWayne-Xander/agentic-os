@@ -25,7 +25,11 @@ export default function ActivityStream() {
   }, []);
 
   const dot = (a: string) =>
-    a === "chrono" ? "text-[#6c5ce7]" :
+    a === "chrono" || a === "hermes" ? "text-[#6c5ce7]" :
+    a === "openclaw" ? "text-[#f472b6]" :
+    a === "memory" ? "text-[#22d3ee]" :
+    a === "labyrinth" ? "text-[#00b894]" :
+    a === "antigravity" ? "text-[#7c3aed]" :
     "text-[var(--fg-dim)]";
 
   return (
@@ -44,7 +48,7 @@ export default function ActivityStream() {
         <AnimatePresence initial={false}>
           {entries.length === 0 && (
             <div className="text-sm text-[var(--fg-dim)]">
-              No log activity yet. Agent streams appear here.
+              No live activity yet. Agent logs and vault updates appear here.
             </div>
           )}
           {entries.map((e, i) => (

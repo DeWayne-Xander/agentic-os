@@ -112,7 +112,7 @@ body::after {
 }
 
 /* Lift real chrome above the overlays */
-main, header, aside, nav, .surface { position: relative; z-index: 2; }
+main, header, aside, .surface { position: relative; z-index: 2; }
 
 /* ─────────────────────────────────────────────────────────────────────
    Typography primitives
@@ -464,6 +464,55 @@ blockquote cite {
 .scroll::-webkit-scrollbar-thumb { background: rgba(212, 165, 116, 0.18); border-radius: 4px; }
 .scroll::-webkit-scrollbar-thumb:hover { background: rgba(212, 165, 116, 0.32); }
 .scroll::-webkit-scrollbar-track { background: transparent; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Mobile-first refinements
+   ───────────────────────────────────────────────────────────────────── */
+
+/* Prevent overscroll bounce on iOS */
+@supports (-webkit-touch-callout: none) {
+  body { overscroll-behavior-y: none; }
+}
+
+/* Safe-area padding utility */
+.safe-top { padding-top: env(safe-area-inset-top, 0px); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* Line clamp for card descriptions */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Touch-friendly tap highlights */
+@media (hover: none) {
+  .surface-card:active,
+  .action-card:active,
+  .vital-tile:active {
+    transform: scale(0.98) !important;
+    opacity: 0.88;
+  }
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
 /* Agent glow utility — keeps existing class names alive */
 .glow-c { color: #22c55e;         text-shadow: 0 0 18px rgba(34, 197, 94, 0.5); }
@@ -526,3 +575,16 @@ blockquote cite {
 /* Aurora element exists in layout — silence it; the design system uses
    ambient gradients on body::after instead */
 .aurora { display: none !important; }
+
+@media (max-width: 767px) {
+  html, body { overscroll-behavior-y: none; }
+  body::before { opacity: 0.38; }
+  body::after {
+    background:
+      radial-gradient(ellipse 70% 40% at 10% 5%, rgba(212, 165, 116, 0.06), transparent 58%),
+      radial-gradient(ellipse 60% 36% at 90% 22%, rgba(201, 124, 94, 0.05), transparent 60%),
+      radial-gradient(ellipse 72% 42% at 50% 96%, rgba(196, 96, 126, 0.04), transparent 60%);
+  }
+  .page-title { font-size: clamp(1.95rem, 10vw, 2.55rem); }
+  .page-subtitle { font-size: 0.95rem; line-height: 1.45; }
+}

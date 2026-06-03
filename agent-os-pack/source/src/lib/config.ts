@@ -88,7 +88,12 @@ export const config: AgenticConfig = {
   // during the migration window (Gemini sunsets 2026-06-18).
   antigravity: process.env.AGENTIC_OS_ANTIGRAVITY_BIN ?? fileCfg.antigravity ?? which("agy"),
   // Codex CLI (OpenAI's coding agent). Used for chat + Goal Mode + reviewing past sessions.
-  codex: process.env.AGENTIC_OS_CODEX_BIN ?? fileCfg.codex ?? which("codex"),
+  // On this machine the binary can live inside the app bundle instead of PATH.
+  codex:
+    process.env.AGENTIC_OS_CODEX_BIN
+    ?? fileCfg.codex
+    ?? which("codex")
+    ?? "/Applications/Codex.app/Contents/Resources/codex",
 
   vaultRoot: defaultVault(),
 

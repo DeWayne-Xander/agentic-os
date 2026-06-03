@@ -1,18 +1,427 @@
-import type { ReactNode } from "react";
-import Sidebar, { MobileNav } from "./Sidebar";
-import TopBar from "./TopBar";
+"use client";
 
-export default function Shell({ children }: { children: ReactNode }) {
+import { useState } from "react";
+import type { ReactNode } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { LayoutGrid, Brain, Target, BookOpen, Menu, X } from "lucide-react";
+import AgentAvatar from "./AgentAvatar";
+
+/* ─── Navigation data ─── */
+interface NavItem {
+  href: string;
+  label: string;
+  icon: ReactNode;
+  accent: string;
+  dim?: string;
+  section?: string;
+}
+
+const NAV: NavItem[] = [
+  { href: "/",            label: "Mission Control", icon: <LayoutGrid size={18} />, accent: "#a855f5", dim: "rgba(168,85,247,0.08)", section: "Workspace" },
+  { href: "/claude",      label: "Codex",           icon: <AgentAvatar agent="codex" size={20} />,       accent: "#22c55e", dim: "rgba(34,197,94,0.08)", section: "Agents" },
+  { href: "/openclaw",    label: "Kairos",          icon: <AgentAvatar agent="openclaw" size={20} />,    accent: "#f472b6", dim: "rgba(244,114,182,0.08)", section: "Agents" },
+  { href: "/hermes",      label: "Chrono",          icon: <AgentAvatar agent="chrono" size={20} />,      accent: "#6c5ce7", dim: "rgba(108,92,231,0.08)", section: "Agents" },
+  { href: "/labyrinth",   label: "Labyrinth",       icon: <AgentAvatar agent="labyrinth" size={20} />,   accent: "#00b894", dim: "rgba(0,184,148,0.08)", section: "Agents" },
+  { href: "/antigravity", label: "Antigravity",     icon: <AgentAvatar agent="antigravity" size={20} />, accent: "#7c3aed", dim: "rgba(124,58,237,0.08)", section: "Agents" },
+  { href: "/goals",       label: "Goals",           icon: <Target size={18} />,                          accent: "#fbbf24", dim: "rgba(251,191,36,0.08)", section: "Self" },
+  { href: "/journal",     label: "Journal",         icon: <BookOpen size={18} />,                        accent: "#f59e0b", dim: "rgba(245,158,11,0.08)", section: "Self" },
+  { href: "/memory",      label: "Memory",          icon: <Brain size={18} />,                           accent: "#22d3ee", dim: "rgba(34,211,238,0.08)", section: "Self" },
+];
+
+const AGENT_NAV = NAV.filter(n => n.section === "Agents");
+const SELF_NAV = NAV.filter(n => n.section === "Self");
+const HOME_NAV = NAV.find(n => n.href === "/")!;
+
+const AGENT_ROUTES = new Set(["/claude", "/openclaw", "/hermes", "/labyrinth", "/antigravity", "/codex"]);
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/*  MOBILE DRAWER                                                    */
+/* ═══════════════════════════════════════════════════════════════════ */
+function Drawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const p = usePathname();
   return (
-    <div className="min-h-screen flex">
-      <Sidebar />
-      <main className="flex-1 min-w-0">
-        <div className="max-w-[1500px] mx-auto px-6 md:px-10 py-6">
-          <TopBar />
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="md:hidden fixed inset-0 z-[80]"
+            style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)" }}
+            onClick={onClose}
+          />
+          <motion.aside
+            initial={{ x: "-100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "-100%" }}
+            transition={{ type: "spring", stiffness: 340, damping: 34 }}
+            className="md:hidden fixed left-0 top-0 bottom-0 z-[90] flex flex-col"
+            style={{
+              width: "min(300px, 82vw)",
+              background: "var(--bg-mid)",
+              borderRight: "1px solid var(--line-soft)",
+              boxShadow: "24px 0 80px rgba(0,0,0,0.6)",
+            }}
+          >
+            {/* Drawer header */}
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--line-deep)" }}>
+              <div>
+                <div style={{ fontFamily: "'Manrope', sans-serif", fontWeight: 600, fontSize: "0.6rem", letterSpacing: "0.25em", textTransform: "uppercase", color: "var(--cream-mute)" }}>
+                  Phoenix, AZ · MST
+                </div>
+                <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 500, fontSize: "1.1rem", color: "var(--cream)", marginTop: 2 }}>
+                  Agentic <span className="hand" style={{ fontSize: "1.2em" }}>OS</span>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="grid place-items-center w-9 h-9 rounded-lg"
+                style={{ border: "1px solid var(--line-soft)", color: "var(--cream-dim)", background: "rgba(255,255,255,0.03)" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Nav */}
+            <nav className="flex-1 overflow-y-auto py-2 px-3 scroll">
+              <DrawerSection label="Workspace" items={[HOME_NAV]} pathname={p} onClose={onClose} />
+              <DrawerSection label="Agents" items={AGENT_NAV} pathname={p} onClose={onClose} />
+              <DrawerSection label="Self" items={SELF_NAV} pathname={p} onClose={onClose} />
+            </nav>
+
+            {/* Footer */}
+            <div className="px-5 py-3" style={{ borderTop: "1px solid var(--line-deep)" }}>
+              <div className="text-[10px] mono" style={{ color: "var(--cream-dim)", lineHeight: 1.6 }}>
+                6 agents · Phoenix, AZ<br />
+                <span className="hand text-[1.1em]">+</span> Obsidian vault
+              </div>
+            </div>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function DrawerSection({ label, items, pathname, onClose }: { label: string; items: NavItem[]; pathname: string; onClose: () => void }) {
+  return (
+    <div className="mt-4">
+      <div className="px-2 pb-1.5" style={{ fontFamily: "'Manrope', sans-serif", fontWeight: 700, fontSize: "0.62rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--cream-mute)" }}>
+        {label}
+      </div>
+      {items.map(item => {
+        const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onClose}
+            className="flex items-center gap-3 px-3 py-3 rounded-xl transition-colors"
+            style={{
+              background: active ? "rgba(212,165,116,0.06)" : "transparent",
+              color: active ? "var(--cream)" : "var(--cream-soft)",
+              borderLeft: active ? "2px solid var(--gold)" : "2px solid transparent",
+              fontFamily: "'Bricolage Grotesque', sans-serif",
+              fontWeight: 500,
+              fontSize: "0.9rem",
+            }}
+          >
+            <span className="grid place-items-center w-8 h-8 rounded-lg shrink-0 transition-colors" style={{
+              color: active ? item.accent : "var(--cream-dim)",
+              background: active ? `${item.accent}12` : "transparent",
+            }}>
+              {item.icon}
+            </span>
+            {item.label}
+            {active && (
+              <span className="ml-auto w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--gold)", boxShadow: "0 0 8px var(--gold)" }} />
+            )}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/*  MOBILE BOTTOM BAR                                                */
+/* ═══════════════════════════════════════════════════════════════════ */
+function BottomBar() {
+  const pathname = usePathname();
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  return (
+    <>
+      {/* Bottom sheet overlay */}
+      <AnimatePresence>
+        {moreOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="md:hidden fixed inset-0 z-[60]"
+            style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
+            onClick={() => setMoreOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Bottom sheet panel */}
+      <AnimatePresence>
+        {moreOpen && (
+          <motion.div
+            initial={{ y: 40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 40, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+            className="md:hidden fixed z-[70] sheet-panel"
+            style={{
+              left: "0.6rem",
+              right: "0.6rem",
+              bottom: "calc(4.5rem + env(safe-area-inset-bottom, 0px))",
+              background: "linear-gradient(180deg, rgba(37,29,44,0.99), rgba(21,16,26,0.99))",
+              border: "1px solid var(--line-soft)",
+              borderRadius: "16px",
+              padding: "16px",
+              boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
+              maxHeight: "50vh",
+              overflowY: "auto",
+            }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div style={{ fontFamily: "'Manrope', sans-serif", fontWeight: 700, fontSize: "0.65rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--cream-mute)" }}>
+                Self Tools
+              </div>
+              <button
+                onClick={() => setMoreOpen(false)}
+                className="grid place-items-center w-7 h-7 rounded-md"
+                style={{ border: "1px solid var(--line-soft)", color: "var(--cream-dim)", fontSize: "11px" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {/* Mission Control */}
+              <Link
+                href="/"
+                onClick={() => setMoreOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-3 rounded-xl"
+                style={{
+                  border: `1px solid ${pathname === "/" ? "var(--gold)" : "var(--line-soft)"}`,
+                  background: pathname === "/" ? "rgba(212,165,116,0.06)" : "rgba(255,255,255,0.02)",
+                }}
+              >
+                <span className="grid place-items-center w-8 h-8 rounded-lg" style={{ background: "rgba(168,85,247,0.1)", color: "#a855f5" }}>
+                  <LayoutGrid size={16} />
+                </span>
+                <span style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 500, fontSize: "0.82rem", color: pathname === "/" ? "var(--gold)" : "var(--cream)" }}>
+                  Home
+                </span>
+              </Link>
+              {/* Self items */}
+              {SELF_NAV.map(item => {
+                const active = pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMoreOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-3 rounded-xl"
+                    style={{
+                      border: `1px solid ${active ? item.accent : "var(--line-soft)"}`,
+                      background: active ? `${item.dim || item.accent + "0a"}` : "rgba(255,255,255,0.02)",
+                    }}
+                  >
+                    <span className="grid place-items-center w-8 h-8 rounded-lg" style={{ background: `${item.accent}14`, color: item.accent }}>
+                      {item.icon}
+                    </span>
+                    <span style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 500, fontSize: "0.82rem", color: active ? item.accent : "var(--cream)" }}>
+                      {item.label}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bottom dock */}
+      <nav
+        className="md:hidden fixed z-50"
+        style={{
+          left: "50%",
+          transform: "translateX(-50%)",
+          bottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))",
+          width: "calc(100vw - 1.5rem)",
+          maxWidth: "420px",
+          borderRadius: "20px",
+          background: "rgba(21,16,26,0.95)",
+          border: "1px solid var(--line-soft)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          boxShadow: "0 -4px 30px rgba(0,0,0,0.4)",
+        }}
+      >
+        <div className="flex items-center justify-around px-2 py-2">
+          {/* Home */}
+          <Link
+            href="/"
+            className="grid place-items-center w-11 h-11 rounded-full transition-colors"
+            style={{ background: pathname === "/" ? "rgba(168,85,247,0.12)" : "transparent" }}
+          >
+            <LayoutGrid size={18} style={{ color: pathname === "/" ? "#a855f5" : "var(--cream-dim)" }} />
+          </Link>
+
+          {/* Agents */}
+          {AGENT_NAV.map(item => {
+            const active = pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="grid place-items-center w-11 h-11 rounded-full transition-colors"
+                style={{ background: active ? `${item.accent}14` : "transparent" }}
+              >
+                <AgentAvatar agent={item.href === "/claude" ? "codex" : item.href === "/openclaw" ? "openclaw" : item.href === "/hermes" ? "chrono" : item.href === "/labyrinth" ? "labyrinth" : "antigravity"} size={22} />
+              </Link>
+            );
+          })}
+
+          {/* More */}
+          <button
+            onClick={() => setMoreOpen(true)}
+            className="grid place-items-center w-11 h-11 rounded-full transition-colors"
+            style={{ background: moreOpen ? "rgba(212,165,116,0.1)" : "transparent" }}
+          >
+            <Menu size={18} style={{ color: moreOpen ? "var(--gold)" : "var(--cream-dim)" }} />
+          </button>
+        </div>
+      </nav>
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/*  MOBILE HEADER (inside main, pushes content down)                 */
+/* ═══════════════════════════════════════════════════════════════════ */
+function MobileTopBar() {
+  return (
+    <div className="md:hidden sticky top-0 z-40" style={{
+      background: "rgba(21,16,26,0.97)",
+      backdropFilter: "blur(20px)",
+      WebkitBackdropFilter: "blur(20px)",
+      borderBottom: "1px solid var(--line-deep)",
+      paddingTop: "env(safe-area-inset-top, 0px)",
+    }}>
+      <div className="flex items-center justify-between px-4 h-[52px]">
+        <Link href="/" className="flex items-center gap-2 min-w-0">
+          <AgentAvatar agent="chrono" size={28} />
+          <span style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 500, fontSize: "0.95rem", color: "var(--cream)" }}>
+            Agentic <span className="hand" style={{ fontSize: "1.2em" }}>OS</span>
+          </span>
+        </Link>
+        <Link
+          href="/"
+          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] uppercase tracking-[0.14em]"
+          style={{
+            fontFamily: "'Manrope', sans-serif",
+            fontWeight: 700,
+            color: "var(--cream-dim)",
+            border: "1px solid var(--line-soft)",
+            background: "rgba(255,255,255,0.03)",
+          }}
+        >
+          <LayoutGrid size={12} /> Home
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/*  DESKTOP SIDEBAR                                                  */
+/* ═══════════════════════════════════════════════════════════════════ */
+function DesktopSidebar() {
+  const pathname = usePathname();
+  return (
+    <aside className="hidden md:flex flex-col md:w-[210px] lg:w-[224px] xl:w-[244px] shrink-0 py-6 border-r border-[var(--line-soft)] md:sticky md:top-0 md:h-[100svh] md:overflow-y-auto" style={{ background: "var(--bg-mid)" }}>
+      <Link href="/" className="block mb-7 px-5">
+        <div className="text-[10px] uppercase tracking-[0.25em] mb-1" style={{ color: "var(--cream-mute)", fontFamily: "'Manrope', sans-serif", fontWeight: 600 }}>
+          Phoenix, AZ · MST
+        </div>
+        <div className="text-xl tracking-tight" style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 500, color: "var(--cream)" }}>
+          Agentic <span className="hand text-[1.3em] ml-1">OS</span>
+        </div>
+      </Link>
+
+      <div className="sidebar-section-label px-5 pb-1.5">Workspace</div>
+      <nav className="flex flex-col gap-0.5 relative">
+        {NAV.map((item, i) => {
+          const isAgent = AGENT_ROUTES.has(item.href);
+          const prev = i > 0 ? NAV[i - 1] : null;
+          const wasAgent = prev ? AGENT_ROUTES.has(prev.href) : false;
+          let sectionLabel: string | undefined;
+          if (i === 1 && isAgent) sectionLabel = "Agents";
+          else if (wasAgent && !isAgent) sectionLabel = "Self";
+          if (item.href === "/guide") return null;
+
+          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          return (
+            <div key={item.href}>
+              {sectionLabel && <div className="sidebar-section-label mt-5 mb-1.5 px-5">{sectionLabel}</div>}
+              <Link href={item.href} className={`sidebar-item relative group flex items-center gap-3 py-2.5 px-5 ${active ? "active" : ""}`}>
+                {active && (
+                  <motion.span layoutId="nav-indicator" className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[22px]"
+                    style={{ background: "var(--gold)", boxShadow: "0 0 10px var(--gold)" }}
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }} />
+                )}
+                <span className="shrink-0 grid place-items-center w-7 h-7 rounded-md transition" style={{ color: active ? "var(--gold)" : "var(--cream-dim)" }}>
+                  {item.icon}
+                </span>
+                <span>{item.label}</span>
+              </Link>
+            </div>
+          );
+        })}
+      </nav>
+
+      <div className="mt-auto pt-6 mx-5 border-t border-[var(--line-soft)]">
+        <div className="sidebar-section-label mt-4 mb-2">Wired</div>
+        <div className="text-[11px] leading-relaxed mono" style={{ color: "var(--cream-dim)" }}>
+          6 agents · Phoenix, AZ<br />
+          <span className="hand text-[1.15em]">+</span> Obsidian vault
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/*  MAIN SHELL                                                       */
+/* ═══════════════════════════════════════════════════════════════════ */
+export default function Shell({ children }: { children: ReactNode }) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  return (
+    <div className="min-h-[100svh] flex">
+      <DesktopSidebar />
+      <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+      <main className="flex-1 min-w-0 overflow-x-hidden">
+        {/* Mobile top bar — inside main scroll context so sticky works */}
+        <MobileTopBar />
+        <div className="max-w-[1500px] mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 py-3 sm:py-6 lg:py-7 pb-24 md:pb-6">
           {children}
         </div>
       </main>
-      <MobileNav />
+
+      {/* Mobile bottom nav */}
+      <BottomBar />
     </div>
   );
 }
