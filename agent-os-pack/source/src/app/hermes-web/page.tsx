@@ -8,7 +8,7 @@ export default function HermesWeb() {
   useEffect(() => {
     fetch('http://127.0.0.1:9119', { mode: 'no-cors' })
       .then(() => setError(null))
-      .catch(() => setError('Hermes Web UI not running on port 9119'));
+      .catch(() => setError('Hermes Web UI not running'));
   }, []);
 
   if (error) {
