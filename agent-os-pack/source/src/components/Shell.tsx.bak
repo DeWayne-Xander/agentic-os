@@ -29,7 +29,6 @@ const NAV: NavItem[] = [
   { href: "/horizon",     label: "Horizon",         icon: <Zap size={18} />,                             accent: "#F5A623", dim: "rgba(245,166,35,0.08)", section: "Self" },
   { href: "/journal",     label: "Journal",         icon: <BookOpen size={18} />,                        accent: "#f59e0b", dim: "rgba(245,158,11,0.08)", section: "Self" },
   { href: "/memory",      label: "Memory",          icon: <Brain size={18} />,                           accent: "#22d3ee", dim: "rgba(34,211,238,0.08)", section: "Self" },
-  { href: "/hermes-web",  label: "Hermes Web",      icon: <LayoutGrid size={18} />,                       accent: "#a78bfa", dim: "rgba(167,139,250,0.08)", section: "Self" },
 ];
 
 const AGENT_NAV = NAV.filter(n => n.section === "Agents");

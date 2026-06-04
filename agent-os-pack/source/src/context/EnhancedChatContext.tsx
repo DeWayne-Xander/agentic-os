@@ -28,10 +28,11 @@ import {
   classifyPrompt,
   resolveRoute,
   apiPathForAgent,
+  PLATFORM_MODEL,
   type ModelTier,
   type RouteDecision,
 } from "@/lib/model-router";
-import { useChatContext, type ChatMessage } from "@/context/ChatContext";
+import { useChatContext } from "@/context/ChatContext";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -93,7 +94,7 @@ const EnhancedChatContext = createContext<EnhancedChatContextValue>({
   engineContext: null,
   setEngineContext: () => {},
   classifyPrompt: () => "light",
-  resolveRoute: () => ({ tier: "light", model: "openrouter/owl-alpha", fallbacks: [], reason: "default", timeoutMs: 30000 }),
+  resolveRoute: () => ({ tier: "light", model: PLATFORM_MODEL, fallbacks: [], reason: "default", timeoutMs: 30000 }),
   legacy: {} as ReturnType<typeof useChatContext>,
 });
 
@@ -127,7 +128,7 @@ export function EnhancedChatProvider({ children }: { children: ReactNode }) {
           if (alive) setEngineCtxState(ctx);
         } else {
           const fresh: EngineContext = {
-            activeModel: "openrouter/owl-alpha",
+            activeModel: PLATFORM_MODEL,
             activeTier: "heavy",
             sessionId: getOrCreateSessionId(),
             startedAt: Date.now(),
@@ -148,9 +149,17 @@ export function EnhancedChatProvider({ children }: { children: ReactNode }) {
 
       if (shared.context) {
         const current = loadEngineContext();
-        if (JSON.stringify(current) !== JSON.stringify(shared.context)) {
-          saveEngineContext(shared.context);
-          if (alive) setEngineCtxState(shared.context);
+        const normalizedSharedContext =
+          shared.context.activeModel === PLATFORM_MODEL
+            ? shared.context
+            : { ...shared.context, activeModel: PLATFORM_MODEL };
+        if (JSON.stringify(current) !== JSON.stringify(normalizedSharedContext)) {
+          saveEngineContext(normalizedSharedContext);
+          void saveSharedMissionControlState({
+            context: normalizedSharedContext,
+            sessionId: normalizedSharedContext.sessionId,
+          });
+          if (alive) setEngineCtxState(normalizedSharedContext);
         }
       }
 
@@ -172,8 +181,8 @@ export function EnhancedChatProvider({ children }: { children: ReactNode }) {
   // ── Sync conversations from legacy ChatContext ──
   useEffect(() => {
     const syncFromLegacy = () => {
-      const legacyStore = (legacy as any).storeRef?.current as Record<string, ChatMessage[]> | undefined;
-      if (!legacyStore) return;
+      const legacyStore = legacy.getStore();
+      if (!legacyStore || Object.keys(legacyStore).length === 0) return;
       const existingTree = loadConversationTree();
       let changed = false;
       for (const [agent, messages] of Object.entries(legacyStore)) {
@@ -328,25 +337,67 @@ export function EnhancedChatProvider({ children }: { children: ReactNode }) {
               }
 
               const rawChunk = decoder.decode(value, { stream: true });
-              let displayChunk = rawChunk;
+              let displayChunk = "";
               let consumed = false;
 
-              try {
-                const parsed = JSON.parse(buffer + rawChunk);
-                if (parsed && typeof parsed === "object" && typeof parsed.text === "string") {
-                  displayChunk = parsed.text; consumed = true;
-                }
-              } catch {
+              // NDJSON line-by-line parsing: split buffer+chunk into lines,
+              // parse each line as a separate JSON object, extract .text
+              const combined = buffer + rawChunk;
+              const lines = combined.split("\n");
+              // Keep the last potentially-partial line in buffer
+              buffer = lines.pop() ?? "";
+
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
                 try {
-                  const parsed = JSON.parse(rawChunk);
-                  if (parsed && typeof parsed === "object" && typeof parsed.text === "string") {
-                    displayChunk = parsed.text; consumed = true;
+                  const parsed = JSON.parse(trimmed);
+                  if (parsed && typeof parsed === "object") {
+                    if (parsed.type === "done") {
+                      // Engine sent done token — finalize stream
+                      buffer = "";
+                      consumed = true;
+                      if (displayChunk) {
+                        handle.text += displayChunk;
+                        handle.listeners.forEach((cb) => { try { cb(displayChunk, false, handle.metrics); } catch { /* noop */ } });
+                      }
+                      appendConversationNode({
+                        agent, msgId, role: "assistant", text: handle.text, ts: Date.now(),
+                        engineContext: { tier: route.tier, model: route.model },
+                      });
+                      void saveSharedMissionControlState({ tree: loadConversationTree() });
+                      void logChatTurn({ agent, user: userText, reply: handle.text, source: "enhanced" });
+                      handle.listeners.forEach((cb) => { try { cb("", true, handle.metrics); } catch { /* noop */ } });
+                      handle.listeners.clear();
+                      streamsRef.current.delete(agent);
+                      setTick((t) => t + 1);
+                      return;
+                    }
+                    if (typeof parsed.text === "string" && parsed.type !== "stderr") {
+                      displayChunk += parsed.text;
+                      consumed = true;
+                    }
                   }
-                } catch { /* plain text */ }
+                } catch {
+                  // Not JSON — treat as plain text
+                  displayChunk += trimmed + "\n";
+                  consumed = true;
+                }
               }
 
-              if (!consumed) buffer += rawChunk;
-              else buffer = "";
+              // Fallback: if NDJSON parsing didn't consume anything, try whole-buffer parse
+              if (!consumed) {
+                try {
+                  const parsed = JSON.parse(combined);
+                  if (parsed && typeof parsed === "object" && typeof parsed.text === "string") {
+                    displayChunk = parsed.text;
+                    consumed = true;
+                    buffer = "";
+                  }
+                } catch {
+                  // Will retry next chunk with more data
+                }
+              }
 
               handle.text += displayChunk;
               handle.metrics.bytesReceived += rawChunk.length;
@@ -430,7 +481,7 @@ export function EnhancedChatProvider({ children }: { children: ReactNode }) {
 
   return (
     <EnhancedChatContext.Provider value={value}>
-      {hydrated ? children : null}
+      {children}
     </EnhancedChatContext.Provider>
   );
 }

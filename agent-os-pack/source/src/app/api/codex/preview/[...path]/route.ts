@@ -5,6 +5,7 @@ import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import path from "node:path";
 import os from "node:os";
 import { readProjectFile } from "@/lib/codexWorkspace";
+import { OPENCLAW_HOME, LEGACY_OPENCLAW_HOME } from "@/lib/agentHomes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,8 +33,10 @@ const ALLOWED_LOCAL_ROOTS = [
   path.join(HOME, "Downloads"),
   path.join(HOME, "Desktop"),
   path.join(HOME, "Documents"),
-  path.join(HOME, ".openclaw", "workspace"),
-  path.join(HOME, ".openclaw", "workspace", "codex-scratch"),
+  path.join(OPENCLAW_HOME, "workspace"),
+  path.join(LEGACY_OPENCLAW_HOME, "workspace"),
+  path.join(OPENCLAW_HOME, "workspace", "codex-scratch"),
+  path.join(LEGACY_OPENCLAW_HOME, "workspace", "codex-scratch"),
   path.join(HOME, "codex-scratch"),
 ];
 

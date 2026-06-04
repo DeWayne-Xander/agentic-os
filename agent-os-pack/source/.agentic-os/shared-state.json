@@ -1,0 +1,18 @@
+{
+  "tree": {
+    "codex": [],
+    "claude": [],
+    "openclaw": [],
+    "chrono": [],
+    "labyrinth": [],
+    "antigravity": []
+  },
+  "context": {
+    "activeModel": "moonshotai/kimi-k2.6:free",
+    "activeTier": "heavy",
+    "sessionId": "sess_mpxlz20c_nvfdme",
+    "startedAt": 1780463459820
+  },
+  "sessionId": "sess_mpxlz20c_nvfdme",
+  "updatedAt": 1780545341209
+}

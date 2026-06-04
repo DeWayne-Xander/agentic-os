@@ -12,6 +12,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
+import { HERMES_HOME, OPENCLAW_HOME } from "@/lib/agentHomes";
 
 export interface AgenticConfig {
   // CLI binary paths
@@ -71,6 +72,7 @@ function defaultVault(): string | null {
   if (fromEnv && existsSync(fromEnv)) return fromEnv;
   // Common defaults to try
   const guesses = [
+    path.join(os.homedir(), ".config", "hermes", "vault"),
     path.join(os.homedir(), "Documents", "Obsidian Vault"),
     path.join(os.homedir(), "Obsidian"),
     path.join(os.homedir(), "Obsidian Vault"),
@@ -100,11 +102,11 @@ export const config: AgenticConfig = {
   openclawLogs:
     process.env.AGENTIC_OS_OPENCLAW_LOGS
     ?? fileCfg.openclawLogs
-    ?? path.join(os.homedir(), ".openclaw", "logs"),
+    ?? path.join(OPENCLAW_HOME, "logs"),
   hermesLogs:
     process.env.AGENTIC_OS_HERMES_LOGS
     ?? fileCfg.hermesLogs
-    ?? path.join(os.homedir(), ".hermes", "cache"),
+    ?? path.join(HERMES_HOME, "cache"),
 
   openclawAgent: process.env.AGENTIC_OS_OPENCLAW_AGENT ?? fileCfg.openclawAgent ?? "main",
 

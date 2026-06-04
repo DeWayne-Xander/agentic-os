@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, type Dispatch, type SetStateAction } from "react";
+import { PLATFORM_MODEL } from "@/lib/model-router";
 
 /**
  * usePersistedState — Generic persisted state hook.
@@ -108,7 +109,7 @@ export function useEngineContext() {
       setContextState(ctx);
     } else {
       const fresh = {
-        activeModel: "openrouter/owl-alpha",
+        activeModel: PLATFORM_MODEL,
         activeTier: "heavy" as const,
         sessionId: getOrCreateSessionId(),
         startedAt: Date.now(),

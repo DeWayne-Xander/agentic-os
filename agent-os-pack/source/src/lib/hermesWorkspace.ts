@@ -14,25 +14,37 @@
 // User picks a bucket → sees what Hermes has produced → clicks a file → preview.
 
 import { readdir, readFile, stat } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { HERMES_HOME, LEGACY_HERMES_HOME } from "@/lib/agentHomes";
 
 const HOME = os.homedir();
-export const HERMES_ROOT = path.join(HOME, ".hermes");
+export const HERMES_ROOT = HERMES_HOME;
+const LEGACY_ROOT = LEGACY_HERMES_HOME;
+const ALL_ROOTS = [HERMES_ROOT, LEGACY_ROOT];
 
 // Active profile detection — Hermes writes the current profile name to
 // ~/.hermes/active_profile. Default to "julian" matching the user's setup.
 function readActiveProfile(): string {
-  try {
-    const txt = require("node:fs").readFileSync(path.join(HERMES_ROOT, "active_profile"), "utf8");
-    const trimmed = (txt as string).trim();
-    if (trimmed && /^[A-Za-z0-9_.-]+$/.test(trimmed)) return trimmed;
-  } catch { /* fall through */ }
+  for (const root of ALL_ROOTS) {
+    try {
+      const txt = readFileSync(path.join(root, "active_profile"), "utf8");
+      const trimmed = txt.trim();
+      if (trimmed && /^[A-Za-z0-9_.-]+$/.test(trimmed)) return trimmed;
+    } catch { /* fall through */ }
+  }
   return "julian";
 }
 export const HERMES_PROFILE = readActiveProfile();
-const PROFILE_ROOT = path.join(HERMES_ROOT, "profiles", HERMES_PROFILE);
+
+function rootsFor(...segments: string[]): string[] {
+  return ALL_ROOTS.map((root) => path.join(root, ...segments));
+}
+
+function profileRootsFor(...segments: string[]): string[] {
+  return ALL_ROOTS.map((root) => path.join(root, "profiles", HERMES_PROFILE, ...segments));
+}
 
 // Bucket = a named output directory the UI presents as a "project".
 // The `paths` array lets us merge multiple physical dirs into one bucket —
@@ -58,7 +70,7 @@ const BUCKETS: BucketDef[] = [
     // the run — full Next.js sites, blog posts, scripts, generated assets.
     // We scan deeper than other buckets so users can browse the full tree,
     // and skip node_modules / .next / .git so we don't drown the UI.
-    paths: [path.join(HERMES_ROOT, "goals")],
+    paths: rootsFor("goals"),
     description: "Output from autonomous Goal Mode runs. Click any file → preview.",
     maxDepth: 4,
   },
@@ -69,9 +81,11 @@ const BUCKETS: BucketDef[] = [
     // land in HOME or ~/Guides at the top level. Strict ext filter so we don't
     // pick up package.json / config files.
     paths: [
-      HOME,
-      path.join(HOME, "Guides"),
-      path.join(PROFILE_ROOT, "workspace"),
+      HERMES_ROOT,
+      LEGACY_ROOT,
+      path.join(HERMES_ROOT, "Guides"),
+      path.join(LEGACY_ROOT, "Guides"),
+      ...profileRootsFor("workspace"),
     ],
     description: "HTML apps + pages Hermes built. Click any → renders live in an iframe.",
     extsAllow: [".html", ".htm"],
@@ -85,9 +99,10 @@ const BUCKETS: BucketDef[] = [
     // maxDepth: 0 = top-level files only — keeps us from pulling in your
     // entire ~/Downloads folder of unrelated YouTube clips.
     paths: [
-      HOME,
-      path.join(PROFILE_ROOT, "workspace"),
-      path.join(HERMES_ROOT, "videos"),
+      HERMES_ROOT,
+      LEGACY_ROOT,
+      ...profileRootsFor("workspace"),
+      ...rootsFor("videos"),
     ],
     description: "HyperFrames + Remotion renders. Scans HOME top-level + workspace.",
     kindsAllow: ["video"],
@@ -96,25 +111,25 @@ const BUCKETS: BucketDef[] = [
   {
     id: "images",
     label: "Images",
-    paths: [path.join(HERMES_ROOT, "images")],
+    paths: rootsFor("images"),
     description: "Image generation outputs from Hermes.",
   },
   {
     id: "audio",
     label: "Audio",
-    paths: [path.join(PROFILE_ROOT, "audio_cache"), path.join(HERMES_ROOT, "audio_cache")],
+    paths: [...profileRootsFor("audio_cache"), ...rootsFor("audio_cache")],
     description: "Voice + TTS renders.",
   },
   {
     id: "workspace",
     label: "Workspace",
-    paths: [path.join(PROFILE_ROOT, "workspace")],
+    paths: profileRootsFor("workspace"),
     description: "Generic scratch where Hermes saves files — HTML, scripts, etc.",
   },
   {
     id: "sandboxes",
     label: "Sandboxes",
-    paths: [path.join(HERMES_ROOT, "sandboxes"), path.join(PROFILE_ROOT, "sandboxes")],
+    paths: [...rootsFor("sandboxes"), ...profileRootsFor("sandboxes")],
     description: "Sandboxed execution environments.",
   },
   // Pastes is text-only — kept at the bottom because it's the least visual
@@ -122,7 +137,7 @@ const BUCKETS: BucketDef[] = [
   {
     id: "pastes",
     label: "Pastes",
-    paths: [path.join(PROFILE_ROOT, "pastes"), path.join(HERMES_ROOT, "pastes")],
+    paths: [...profileRootsFor("pastes"), ...rootsFor("pastes")],
     description: "Text dumps captured during sessions.",
   },
 ];

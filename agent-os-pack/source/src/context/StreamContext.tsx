@@ -383,28 +383,65 @@ export function StreamProvider({ children }: { children: ReactNode }) {
               }
 
               const rawChunk = decoder.decode(value, { stream: true });
-              let displayChunk = rawChunk;
+              let displayChunk = "";
               let consumed = false;
 
-              // JSON unwrap
-              try {
-                const parsed = JSON.parse(buffer + rawChunk);
-                if (parsed && typeof parsed === "object" && typeof parsed.text === "string") {
-                  displayChunk = parsed.text;
+              // NDJSON line-by-line parsing: split buffer+chunk into lines,
+              // parse each line as a separate JSON object, extract .text
+              const combined = buffer + rawChunk;
+              const lines = combined.split("\n");
+              // Keep the last potentially-partial line in buffer
+              buffer = lines.pop() ?? "";
+
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                try {
+                  const parsed = JSON.parse(trimmed);
+                  if (parsed && typeof parsed === "object") {
+                    if (parsed.type === "done") {
+                      // Engine sent done token — finalize stream
+                      buffer = "";
+                      consumed = true;
+                      // Flush display chunk before exiting
+                      if (displayChunk) {
+                        handle.text += displayChunk;
+                        handle.listeners.forEach((cb) => { try { cb(displayChunk, false); } catch { /* noop */ } });
+                      }
+                      handle.text += displayChunk;
+                      saveRecovery({ agent, msgId, text: handle.text, ts: Date.now() });
+                      logToVault();
+                      handle.listeners.forEach((cb) => { try { cb("", true); } catch { /* noop */ } });
+                      handle.listeners.clear();
+                      streamsRef.current.delete(agent);
+                      setTick((t) => t + 1);
+                      return;
+                    }
+                    if (typeof parsed.text === "string" && parsed.type !== "stderr") {
+                      displayChunk += parsed.text;
+                      consumed = true;
+                    }
+                  }
+                } catch {
+                  // Not JSON — treat as plain text
+                  displayChunk += trimmed + "\n";
                   consumed = true;
                 }
-              } catch {
+              }
+
+              // Fallback: if NDJSON parsing didn't consume anything, try whole-buffer parse
+              if (!consumed) {
                 try {
-                  const parsed = JSON.parse(rawChunk);
+                  const parsed = JSON.parse(combined);
                   if (parsed && typeof parsed === "object" && typeof parsed.text === "string") {
                     displayChunk = parsed.text;
                     consumed = true;
+                    buffer = "";
                   }
-                } catch { /* plain text */ }
+                } catch {
+                  // Will retry next chunk with more data
+                }
               }
-
-              if (!consumed) buffer += rawChunk;
-              else buffer = "";
 
               handle.text += displayChunk;
               handle.metrics.bytesReceived += rawChunk.length;

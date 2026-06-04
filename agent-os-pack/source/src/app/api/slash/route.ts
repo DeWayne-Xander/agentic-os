@@ -42,7 +42,7 @@ export interface TelemetryUsageMetrics {
   contextMax: number;
 }
 
-// ─── Telemetry (zero-cost tier — owl-alpha via OpenRouter) ────────
+// ─── Telemetry (platform model — Kimi K2.6 free tier) ─────────────
 const TELEMETRY: TelemetryUsageMetrics = {
   inputTokens: 48_250,
   outputTokens: 12_410,
@@ -55,7 +55,7 @@ function telemetryText(): string {
   const pct = ((TELEMETRY.contextUsed / TELEMETRY.contextMax) * 100).toFixed(1);
   return [
     "═══ SYSTEM USAGE & TELEMETRY ═══",
-    "• Active Engine: `openrouter/owl-alpha`",
+    "• Active Engine: `moonshotai/kimi-k2.6:free`",
     `• Input Metrics:  ${TELEMETRY.inputTokens.toLocaleString()} tokens`,
     `• Output Metrics: ${TELEMETRY.outputTokens.toLocaleString()} tokens`,
     `• Infrastructure Cost: $${TELEMETRY.sessionCost.toFixed(5)}`,

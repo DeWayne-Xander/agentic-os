@@ -11,8 +11,9 @@ import { execSync, exec, execFile, type ChildProcess } from "node:child_process"
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { OPENCLAW_HOME } from "@/lib/agentHomes";
 
-const PID_DIR = path.join(os.homedir(), ".openclaw", "workspace", "pids");
+const PID_DIR = path.join(OPENCLAW_HOME, "workspace", "pids");
 
 function ensurePidDir() {
   if (!existsSync(PID_DIR)) execSync(`mkdir -p "${PID_DIR}"`);

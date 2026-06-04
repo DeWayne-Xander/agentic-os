@@ -12,6 +12,7 @@ import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { OPENCLAW_HOME } from "@/lib/agentHomes";
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ export interface VaultSyncEntry {
 
 const AGENT_DIR = path.join(os.homedir(), "Projects", "agentic-os-source", "agent-os-pack", "source");
 const VAULT_DIR = path.join(os.homedir(), ".config", "hermes", "vault");
-const WORKSPACE_DIR = path.join(os.homedir(), ".openclaw", "workspace");
+const WORKSPACE_DIR = path.join(OPENCLAW_HOME, "workspace");
 const PID_DIR = path.join(WORKSPACE_DIR, "pids");
 
 const KNOWN_DAEMONS: DaemonSpec[] = [

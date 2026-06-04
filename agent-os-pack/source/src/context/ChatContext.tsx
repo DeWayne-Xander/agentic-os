@@ -187,6 +187,7 @@ const ChatContext = createContext<ChatContextValue>({
   onStreamChunk: () => () => {},
   streamingId: () => null,
   abortStream: () => {},
+  getStore: () => ({}),
 });
 
 export function useChatContext() {
@@ -227,7 +228,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           { source: "agentic-os-chat-v2:claude", target: "codex" },
         ] as const;
         for (const { source, target } of legacyKeys) {
-          if (store[target]?.length) continue;
+          if (localStore[target]?.length) continue;
           const legacy = localStorage.getItem(source);
           if (!legacy) continue;
           const parsed = JSON.parse(legacy);
@@ -559,54 +560,62 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 return;
               }
 
-              // ─── JSON UNWRAP ──────────────────────────────────────────
-              // Routes return JSON: {"ok":true,"text":"...","empty":...}
-              // Detect and extract just the .text field so the UI shows
-              // clean prose instead of raw JSON boilerplate.
               const rawChunk = decoder.decode(value, { stream: true });
-              let displayChunk = rawChunk;
+              let displayChunk = "";
               let consumed = false;
 
-              // Try parsing the accumulated buffer + new chunk as JSON
-              try {
-                const parsed = JSON.parse(buffer + rawChunk);
-                if (parsed && typeof parsed === "object" && typeof parsed.text === "string") {
-                  displayChunk = parsed.text;
-                  consumed = true;
-                } else if (
-                  parsed &&
-                  typeof parsed === "object" &&
-                  typeof (parsed as { item?: { type?: string; text?: string; aggregated_output?: string } }).item?.text === "string"
-                ) {
-                  displayChunk = (parsed as { item: { text: string } }).item.text;
+              // ── NDJSON line-by-line parsing ───────────────────────────────
+              // Some routes (antigravity, codex) stream multiple JSON objects
+              // separated by newlines. Others (hermes, labyrinth, openclaw) return
+              // a single JSON object. Handle both.
+              const combined = buffer + rawChunk;
+              const lines = combined.split("\n");
+              buffer = lines.pop() ?? ""; // keep partial line for next chunk
+
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                try {
+                  const parsed = JSON.parse(trimmed);
+                  if (parsed && typeof parsed === "object") {
+                    if (parsed.type === "done") {
+                      // Engine sent done token — finalize immediately
+                      buffer = "";
+                      consumed = true;
+                      if (displayChunk) handle.text += displayChunk;
+                      finalizeMessage(agent, msgId, handle.text);
+                      void logChatTurn({ agent, user: userText, reply: handle.text, source: "web" });
+                      handle.listeners.forEach((cb) => { try { cb(displayChunk, true); } catch { /* noop */ } });
+                      handle.listeners.clear();
+                      streamsRef.current.delete(agent);
+                      return;
+                    }
+                    if (typeof parsed.text === "string" && parsed.type !== "stderr") {
+                      displayChunk += parsed.text;
+                      consumed = true;
+                    }
+                  }
+                } catch {
+                  displayChunk += trimmed + "\n";
                   consumed = true;
                 }
-              } catch {
-                // Not valid JSON yet — try parsing just the new chunk alone
+              }
+
+              // Fallback: if NDJSON didn't consume anything, try whole-buffer JSON parse
+              // (handles hermes/labyrinth/openclaw single-object responses that arrived complete)
+              if (!consumed) {
                 try {
-                  const parsed = JSON.parse(rawChunk);
+                  const parsed = JSON.parse(combined);
                   if (parsed && typeof parsed === "object" && typeof parsed.text === "string") {
                     displayChunk = parsed.text;
                     consumed = true;
-                  } else if (
-                    parsed &&
-                    typeof parsed === "object" &&
-                    typeof (parsed as { item?: { type?: string; text?: string; aggregated_output?: string } }).item?.text === "string"
-                  ) {
-                    displayChunk = (parsed as { item: { text: string } }).item.text;
-                    consumed = true;
+                    buffer = "";
                   }
                 } catch {
-                  // Plain text — use raw
+                  // Incomplete JSON — will retry next chunk
                 }
               }
 
-              // Only accumulate raw buffer if we didn't consume it as JSON
-              if (!consumed) {
-                buffer += rawChunk;
-              } else {
-                buffer = "";
-              }
               handle.text += displayChunk;
 
               // Push display-clean chunk to ALL listeners
@@ -723,7 +732,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         getStore,
       }}
     >
-      {hydrated ? children : null}
+      {children}
     </ChatContext.Provider>
   );
 }

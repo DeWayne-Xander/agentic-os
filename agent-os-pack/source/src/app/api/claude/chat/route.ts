@@ -50,7 +50,7 @@ function readOwlAlphaContext() {
   const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
   const adminTelegramId = process.env.ADMIN_TELEGRAM_ID ?? "";
   const soulConfigPath = process.env.SOUL_CONFIG ?? "";
-  const framework = process.env.OWL_ALPHA_FRAMEWORK ?? "Owl Alpha";
+  const framework = process.env.OWL_ALPHA_FRAMEWORK ?? "Kimi K2.6";
   return {
     telegramConfigured: telegramBotToken.length > 0,
     adminTelegramId,
@@ -168,7 +168,7 @@ export async function POST(req: Request) {
         "Content-Type": "application/x-ndjson; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
-        "X-Codex-Engine": "openai-subscription",
+        "X-Codex-Engine": "codex-oauth",
         "X-Owl-Alpha-Framework": owlAlpha.framework,
         "X-Owl-Alpha-Configured": owlAlpha.telegramConfigured ? "true" : "false",
       },
@@ -210,13 +210,13 @@ export async function POST(req: Request) {
   });
 
   return new Response(stream, {
-    headers: {
-      "Content-Type": "application/x-ndjson; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      "X-Accel-Buffering": "no",
-      "X-Codex-Engine": "codex-cli-fallback",
-      "X-Owl-Alpha-Framework": owlAlpha.framework,
-      "X-Owl-Alpha-Configured": owlAlpha.telegramConfigured ? "true" : "false",
-    },
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        "X-Codex-Engine": "codex-cli",
+        "X-Owl-Alpha-Framework": owlAlpha.framework,
+        "X-Owl-Alpha-Configured": owlAlpha.telegramConfigured ? "true" : "false",
+      },
   });
 }

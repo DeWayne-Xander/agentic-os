@@ -6,24 +6,25 @@ export const dynamic = "force-dynamic";
 const FASTAPI_BASE = "http://127.0.0.1:8080";
 
 export async function GET() {
+  // Check FastAPI but don't fail if it's down
+  let fastapi: Record<string, unknown> = { status: "unknown" };
   try {
-    // Try FastAPI health first
     const r = await fetch(`${FASTAPI_BASE}/api/health`, {
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(2000),
     });
-    const j = await r.json();
-    return NextResponse.json({
-      ok: true,
-      location: "Phoenix, AZ",
-      timezone: "America/Phoenix",
-      fastapi: j,
-    });
+    if (r.ok) {
+      fastapi = await r.json();
+    } else {
+      fastapi = { status: "unhealthy", http: r.status };
+    }
   } catch (e) {
-    return NextResponse.json({
-      ok: false,
-      location: "Phoenix, AZ",
-      timezone: "America/Phoenix",
-      fastapi: { error: String(e) },
-    }, { status: 503 });
+    fastapi = { status: "unavailable", error: String(e) };
   }
+
+  return NextResponse.json({
+    ok: true,
+    location: "Phoenix, AZ",
+    timezone: "America/Phoenix",
+    fastapi,
+  });
 }

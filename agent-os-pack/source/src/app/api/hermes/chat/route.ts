@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   // it's almost always auth — run `hermes status` and check the provider shows
   // a ✓ for its API key.
   // ─── IDENTITY ANCHOR ────────────────────────────────────────────────
-  // Prepend a system-level instruction so openrouter/owl-alpha always
+  // Prepend a system-level instruction so moonshotai/kimi-k2.6:free always
   // identifies as Chrono — overriding any provider-default "OWL" persona.
   const IDENTITY_PREFIX =
     "[SYSTEM: You are Chrono 🦉 — the primary system commander and orchestrator for DeWayne's Agentic OS. " +

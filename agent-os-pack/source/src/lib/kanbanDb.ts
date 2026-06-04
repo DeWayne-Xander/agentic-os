@@ -10,6 +10,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { GOALS_FILE } from "@/lib/vaultWriter";
+import { HERMES_HOME as APP_HERMES_HOME, LEGACY_HERMES_HOME } from "@/lib/agentHomes";
 
 // ─── node:sqlite type shim ──────────────────────────────────────────────────
 // node:sqlite is available in Node >= 22 behind --experimental-sqlite.
@@ -32,7 +33,7 @@ try {
   // node:sqlite unavailable — fall back to JSON-only mode
 }
 
-const HERMES_HOME = path.join(os.homedir(), ".hermes");
+const HERMES_HOME_CANDIDATES = [APP_HERMES_HOME, LEGACY_HERMES_HOME];
 
 export interface BoardEntry { slug: string; name: string; current: boolean; dbPath: string; }
 export interface TaskRow {
@@ -55,11 +56,14 @@ export interface RunRow {
 // ─── DB path resolution ─────────────────────────────────────────────────────
 export function listBoards(): BoardEntry[] {
   const out: BoardEntry[] = [];
-  const defaultDb = path.join(HERMES_HOME, "kanban.db");
+  const defaultDb = HERMES_HOME_CANDIDATES
+    .map((root) => path.join(root, "kanban.db"))
+    .find((p) => existsSync(p)) ?? path.join(HERMES_HOME_CANDIDATES[0], "kanban.db");
   out.push({ slug: "default", name: "Default", current: false, dbPath: defaultDb });
 
-  const boardsRoot = path.join(HERMES_HOME, "kanban", "boards");
-  if (existsSync(boardsRoot)) {
+  for (const root of HERMES_HOME_CANDIDATES) {
+    const boardsRoot = path.join(root, "kanban", "boards");
+    if (!existsSync(boardsRoot)) continue;
     try {
       for (const entry of readdirSync(boardsRoot)) {
         if (entry.startsWith("_")) continue; // skip _archived
@@ -84,20 +88,31 @@ export function listBoards(): BoardEntry[] {
   }
 
   // Current pointer
-  const currentFile = path.join(HERMES_HOME, "kanban", "current");
   let currentSlug = "default";
-  if (existsSync(currentFile)) {
-    try { currentSlug = readFileSync(currentFile, "utf8").trim() || "default"; }
-    catch {}
+  for (const root of HERMES_HOME_CANDIDATES) {
+    const currentFile = path.join(root, "kanban", "current");
+    if (!existsSync(currentFile)) continue;
+    try {
+      currentSlug = readFileSync(currentFile, "utf8").trim() || "default";
+      break;
+    } catch {}
   }
   for (const b of out) b.current = b.slug === currentSlug;
   return out;
 }
 
 function dbPathForBoard(slug: string | undefined): string {
-  if (!slug || slug === "default") return path.join(HERMES_HOME, "kanban.db");
+  if (!slug || slug === "default") {
+    return HERMES_HOME_CANDIDATES
+      .map((root) => path.join(root, "kanban.db"))
+      .find((p) => existsSync(p)) ?? path.join(HERMES_HOME_CANDIDATES[0], "kanban.db");
+  }
   if (!/^[a-z0-9_-]{1,64}$/.test(slug)) throw new Error("invalid board slug");
-  return path.join(HERMES_HOME, "kanban", "boards", slug, "kanban.db");
+  for (const root of HERMES_HOME_CANDIDATES) {
+    const p = path.join(root, "kanban", "boards", slug, "kanban.db");
+    if (existsSync(p)) return p;
+  }
+  return path.join(HERMES_HOME_CANDIDATES[0], "kanban", "boards", slug, "kanban.db");
 }
 
 function openDb(slug?: string): SqliteDatabaseSync | null {
@@ -256,14 +271,20 @@ export function statsFor(slug?: string): { by_status: Record<string, number>; by
 }
 
 function basicAssignees(): { name: string; on_disk: boolean; counts: Record<string, number> }[] {
-  const profileRoot = path.join(HERMES_HOME, "profiles");
-  if (!existsSync(profileRoot)) return [];
-  try {
-    return readdirSync(profileRoot)
-      .filter((p) => { try { return statSync(path.join(profileRoot, p)).isDirectory(); } catch { return false; } })
-      .sort()
-      .map((name) => ({ name, on_disk: true, counts: {} as Record<string, number> }));
-  } catch { return []; }
+  const roots = [APP_HERMES_HOME, LEGACY_HERMES_HOME];
+  const profiles = new Set<string>();
+  for (const root of roots) {
+    const profileRoot = path.join(root, "profiles");
+    if (!existsSync(profileRoot)) continue;
+    try {
+      for (const p of readdirSync(profileRoot)) {
+        try {
+          if (statSync(path.join(profileRoot, p)).isDirectory()) profiles.add(p);
+        } catch { /* ignore */ }
+      }
+    } catch { /* ignore */ }
+  }
+  return Array.from(profiles).sort().map((name) => ({ name, on_disk: true, counts: {} as Record<string, number> }));
 }
 
 export function assigneesFor(slug?: string): { name: string; on_disk: boolean; counts: Record<string, number> }[] {
@@ -275,8 +296,9 @@ export function assigneesFor(slug?: string): { name: string; on_disk: boolean; c
     a[task.status] = (a[task.status] ?? 0) + 1;
   }
   const profiles = new Set(Object.keys(counts));
-  const profileRoot = path.join(HERMES_HOME, "profiles");
-  if (existsSync(profileRoot)) {
+  for (const root of [APP_HERMES_HOME, LEGACY_HERMES_HOME]) {
+    const profileRoot = path.join(root, "profiles");
+    if (!existsSync(profileRoot)) continue;
     try {
       for (const p of readdirSync(profileRoot)) {
         try {
@@ -287,7 +309,7 @@ export function assigneesFor(slug?: string): { name: string; on_disk: boolean; c
   }
   return Array.from(profiles).sort().map((name) => ({
     name,
-    on_disk: existsSync(path.join(profileRoot, name)),
+    on_disk: existsSync(path.join(APP_HERMES_HOME, "profiles", name)) || existsSync(path.join(LEGACY_HERMES_HOME, "profiles", name)),
     counts: counts[name] ?? {},
   }));
 }

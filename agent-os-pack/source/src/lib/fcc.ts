@@ -30,7 +30,7 @@ export const FCC_TOKEN = "freecc";
 export interface FccState {
   enabled: boolean;     // user opt-in (persisted)
   reachable: boolean;   // /health probe result
-  model: string | null; // active model from ~/.fcc/.env (e.g. "open_router/openrouter/owl-alpha")
+  model: string | null; // active model from ~/.fcc/.env (e.g. "moonshotai/kimi-k2.6:free")
   provider: string | null; // friendly provider name parsed from model
 }
 
@@ -99,7 +99,7 @@ export async function getState(): Promise<FccState> {
 
 // Env vars the Free Claude Code agent ALWAYS uses — these point the claude
 // CLI at our local fcc-server, which routes to whatever upstream is configured
-// in ~/.fcc/.env (OpenRouter Owl Alpha by default in our setup).
+// in ~/.fcc/.env (Kimi K2.6 free tier by default in our setup).
 //
 // CRITICAL: setting ANTHROPIC_API_KEY here is what makes the Claude CLI use
 // our proxy token instead of the OAuth credentials saved by `claude login`.

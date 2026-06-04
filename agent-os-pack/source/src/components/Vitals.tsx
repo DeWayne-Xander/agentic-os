@@ -8,11 +8,12 @@ import { usePollWhileVisible } from "@/lib/usePollWhileVisible";
 
 interface VitalsData {
   ts: number;
-  claude: { ok: boolean; version: string; latencyMs: number };
-  openclaw: { ok: boolean; gateway: string; degraded: boolean; busy?: boolean; agents: string[]; sessions: number; latencyMs: number };
+  claude: { ok: boolean; version: string; latencyMs: number; model?: string };
+  codex: { ok: boolean; version: string; latencyMs: number; model?: string };
+  openclaw: { ok: boolean; gateway: string; degraded: boolean; busy?: boolean; agents: string[]; sessions: number; latencyMs: number; model?: string };
   chrono: { ok: boolean; model: string; provider: string; latencyMs: number };
   labyrinth: { ok: boolean; model: string; latencyMs: number };
-  antigravity: { ok: boolean; version: string; latencyMs: number };
+  antigravity: { ok: boolean; version: string; latencyMs: number; model?: string };
 }
 
 function VitalTile({ label, icon, primary, sub, status, href }: {
@@ -56,7 +57,7 @@ export default function Vitals() {
       <VitalTile label="Chrono" icon={<Cpu size={12} />} primary={data?.chrono.ok ? "Online" : "…"}
         sub={data ? `${data.chrono.model.split("/").pop()} · ${data.chrono.provider}` : "checking…"} status={data?.chrono.ok ? "ok" : "warn"} />
       <VitalTile label="Labyrinth" icon={<Route size={12} />} primary={data?.labyrinth.ok ? "Online" : "…"}
-        sub={data ? `Owl Alpha · ${data.labyrinth.latencyMs}ms` : "checking…"} status={data?.labyrinth.ok ? "ok" : "warn"} />
+        sub={data ? `Kimi K2.6 · ${data.labyrinth.latencyMs}ms` : "checking…"} status={data?.labyrinth.ok ? "ok" : "warn"} />
       <VitalTile label="Antigravity" icon={<Zap size={12} />} primary={data?.antigravity.ok ? "Online" : "…"}
         sub={data ? `${data.antigravity.version.split(" ")[0]} · ${data.antigravity.latencyMs}ms` : "checking…"} status={data?.antigravity.ok ? "ok" : "warn"} />
       <VitalTile label="Heartbeat" icon={<Activity size={12} />} primary={<><em>{tick}</em><span className="text-[var(--cream-dim)] text-[0.7em] ml-0.5">ticks</span></>}

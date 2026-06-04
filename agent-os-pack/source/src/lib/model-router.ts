@@ -4,8 +4,8 @@
  * Dynamically routes tasks to the optimal model/engine based on request profile.
  *
  * Routing tiers:
- *   HEAVY  → openrouter/owl-alpha (complex engineering, deep file analysis, automation)
- *   LIGHT  → Secondary high-speed models (fast memory queries, UI state, conversational)
+ *   HEAVY  → moonshotai/kimi-k2.6:free (complex engineering, deep file analysis, automation)
+ *   LIGHT  → moonshotai/kimi-k2.6:free (fast memory queries, UI state, conversational)
  *
  * Classification is done by keyword heuristics on the prompt + agent context.
  * The runner.ts run() function consults this router when no explicit model is set.
@@ -26,15 +26,13 @@ export interface RouteDecision {
 }
 
 // ─── Model registry ────────────────────────────────────────────────
-// Primary heavy engine — DeepSeek-R1 for deep reasoning (cheap but not free)
-// Use openrouter/owl-alpha for zero-cost operation
-const HEAVY_PRIMARY = "openrouter/owl-alpha";
-const HEAVY_FALLBACKS = ["deepseek/deepseek-r1-distill-qwen-32b"];
+// Single platform-wide engine — Kimi K2.6 free tier.
+export const PLATFORM_MODEL = "moonshotai/kimi-k2.6:free";
+const HEAVY_PRIMARY = PLATFORM_MODEL;
+const HEAVY_FALLBACKS = [PLATFORM_MODEL];
 
 // Light / high-speed engines for rapid tasks — Kairos & quick operations
-const LIGHT_MODELS: string[] = [
-  "openrouter/owl-alpha",      // Fast, tool-call optimized, free
-];
+const LIGHT_MODELS: string[] = [PLATFORM_MODEL];
 
 // ─── Classification keywords ────────────────────────────────────────
 const HEAVY_KEYWORDS: RegExp[] = [
@@ -136,6 +134,6 @@ export function apiPathForAgent(agent: string): string {
  * Model selector for the UI — returns human-readable model name
  */
 export function modelDisplayName(tier: ModelTier, model: string): string {
-  if (tier === "heavy") return "🦉 Owl Alpha (Deep Reasoning)";
-  return "⚡ Owl Alpha (High-Speed Ops)";
+  if (tier === "heavy") return "🌙 Kimi K2.6 (Deep Reasoning)";
+  return "⚡ Kimi K2.6 (High-Speed Ops)";
 }

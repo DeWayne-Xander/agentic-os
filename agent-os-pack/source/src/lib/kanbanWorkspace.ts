@@ -3,8 +3,9 @@
 // We only allow reads strictly inside one validated task workspace — path-traversal blocked.
 
 import { readdir, readFile, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
-import os from "node:os";
+import { HERMES_HOME, LEGACY_HERMES_HOME } from "@/lib/agentHomes";
 
 const TASK_ID_RE = /^t_[a-z0-9_-]+$/i;
 const BOARD_RE = /^[a-z0-9_-]{1,64}$/;
@@ -12,11 +13,12 @@ const BOARD_RE = /^[a-z0-9_-]{1,64}$/;
 export function taskWorkspaceRoot(taskId: string, board?: string): string | null {
   if (!TASK_ID_RE.test(taskId)) return null;
   if (board && !BOARD_RE.test(board)) return null;
-  const base = path.join(os.homedir(), ".hermes", "kanban");
+  const base = path.join(HERMES_HOME, "kanban");
+  const legacyBase = path.join(LEGACY_HERMES_HOME, "kanban");
   if (board && board !== "default") {
-    return path.join(base, "boards", board, "workspaces", taskId);
+    return path.join((existsSync(path.join(base, "boards", board, "workspaces", taskId)) ? base : legacyBase), "boards", board, "workspaces", taskId);
   }
-  return path.join(base, "workspaces", taskId);
+  return existsSync(path.join(base, "workspaces", taskId)) ? path.join(base, "workspaces", taskId) : path.join(legacyBase, "workspaces", taskId);
 }
 
 export interface WsFile { name: string; relPath: string; bytes: number; mtime: number; isText: boolean; }

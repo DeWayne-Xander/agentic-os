@@ -9,12 +9,17 @@ import { readFile, writeFile, mkdir, rename, readdir, stat } from "node:fs/promi
 import { existsSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { HERMES_HOME, LEGACY_HERMES_HOME } from "@/lib/agentHomes";
 
-const HOME = os.homedir();
-const STATE_DIR = path.join(HOME, ".agentic-os");
+const LEGACY_STATE_DIR = path.join(os.homedir(), ".agentic-os");
+const LEGACY_STATE_FILE = path.join(LEGACY_STATE_DIR, "hermes-goals.json");
+const LEGACY_GOAL_LOGS_DIR = path.join(LEGACY_STATE_DIR, "hermes-goal-logs");
+const LEGACY_HERMES_SCRATCH_ROOT = path.join(LEGACY_HERMES_HOME, "goals");
+
+const STATE_DIR = path.join(HERMES_HOME, "state");
 const STATE_FILE = path.join(STATE_DIR, "hermes-goals.json");
-export const GOAL_LOGS_DIR = path.join(STATE_DIR, "hermes-goal-logs");
-export const HERMES_SCRATCH_ROOT = path.join(HOME, ".hermes", "goals");
+export const GOAL_LOGS_DIR = path.join(HERMES_HOME, "goal-logs");
+export const HERMES_SCRATCH_ROOT = path.join(HERMES_HOME, "goals");
 
 export type GoalStatus = "queued" | "running" | "completed" | "failed" | "stopped";
 
@@ -36,12 +41,17 @@ export interface HermesGoal {
 interface State { goals: HermesGoal[]; }
 
 async function readState(): Promise<State> {
-  if (!existsSync(STATE_FILE)) return { goals: [] };
-  try {
-    const txt = await readFile(STATE_FILE, "utf8");
-    const j = JSON.parse(txt);
-    return { goals: Array.isArray(j.goals) ? j.goals : [] };
-  } catch { return { goals: [] }; }
+  for (const file of [STATE_FILE, LEGACY_STATE_FILE]) {
+    if (!existsSync(file)) continue;
+    try {
+      const txt = await readFile(file, "utf8");
+      const j = JSON.parse(txt);
+      return { goals: Array.isArray(j.goals) ? j.goals : [] };
+    } catch {
+      // try next candidate
+    }
+  }
+  return { goals: [] };
 }
 
 // In-process write mutex — every read-mutate-write goes through this queue so
@@ -74,62 +84,66 @@ async function mutate<T>(fn: (s: State) => T | Promise<T>): Promise<T> {
   });
 }
 
-// Walk ~/.hermes/goals/ for directories that aren't tracked in state and
+// Walk ~/.agentic-os/hermes/goals/ for directories that aren't tracked in state and
 // re-create entries for them. Status inferred from the log file's end marker.
 // This is what brings a "lost" goal (state wipe, crashed Next process) back
 // into the UI without the user losing the actual work on disk.
 export async function recoverOrphans(): Promise<{ recovered: number; existing: number }> {
-  if (!existsSync(HERMES_SCRATCH_ROOT)) return { recovered: 0, existing: 0 };
   const s = await readState();
   const tracked = new Set(s.goals.map((g) => g.id));
-  let dirs: string[] = [];
-  try { dirs = await readdir(HERMES_SCRATCH_ROOT); } catch { return { recovered: 0, existing: 0 }; }
+  const roots = [HERMES_SCRATCH_ROOT, LEGACY_HERMES_SCRATCH_ROOT];
   let recovered = 0;
-  for (const name of dirs) {
-    if (!name.startsWith("hg_")) continue;
-    if (tracked.has(name)) continue;
-    const cwd = path.join(HERMES_SCRATCH_ROOT, name);
-    const st = await stat(cwd).catch(() => null);
-    if (!st || !st.isDirectory()) continue;
-    const logFile = path.join(GOAL_LOGS_DIR, `${name}.log`);
-    // Pull prompt + status from the log if it exists
-    let prompt = "(recovered — original prompt unavailable)";
-    let status: GoalStatus = "stopped";
-    let exitCode: number | null | undefined = undefined;
-    let startedAt: number | undefined = st.ctimeMs;
-    let finishedAt: number | undefined = undefined;
-    if (existsSync(logFile)) {
-      try {
-        const txt = await readFile(logFile, "utf8");
-        // Pull prompt from the START block — log starts with a leading \n
-        // so we don't anchor with ^. Pattern: === START <iso> · <id> ===\n<prompt>\n\n<...>
-        const startMatch = txt.match(/=== START [^\n]+\n([\s\S]*?)\n\n/);
-        if (startMatch) prompt = startMatch[1].trim() || prompt;
-        // Pull status from the END marker
-        const endMatch = txt.match(/=== END (\S+) · exit (-?\d+) ===/);
-        if (endMatch) {
-          finishedAt = Date.parse(endMatch[1]);
-          exitCode = parseInt(endMatch[2], 10);
-          status = exitCode === 0 ? "completed" : "failed";
-        } else {
-          // No end marker — either still running or crashed mid-stream
-          status = "stopped";
+  for (const root of roots) {
+    if (!existsSync(root)) continue;
+    let dirs: string[] = [];
+    try { dirs = await readdir(root); } catch { continue; }
+    for (const name of dirs) {
+      if (!name.startsWith("hg_")) continue;
+      if (tracked.has(name)) continue;
+      const cwd = path.join(root, name);
+      const st = await stat(cwd).catch(() => null);
+      if (!st || !st.isDirectory()) continue;
+      const logCandidates = [
+        path.join(GOAL_LOGS_DIR, `${name}.log`),
+        path.join(LEGACY_GOAL_LOGS_DIR, `${name}.log`),
+      ];
+      let logFile = logCandidates[0];
+      let prompt = "(recovered — original prompt unavailable)";
+      let status: GoalStatus = "stopped";
+      let exitCode: number | null | undefined = undefined;
+      let startedAt: number | undefined = st.ctimeMs;
+      let finishedAt: number | undefined = undefined;
+      const existingLog = logCandidates.find((p) => existsSync(p));
+      if (existingLog) {
+        logFile = existingLog;
+        try {
+          const txt = await readFile(logFile, "utf8");
+          const startMatch = txt.match(/=== START [^\n]+\n([\s\S]*?)\n\n/);
+          if (startMatch) prompt = startMatch[1].trim() || prompt;
+          const endMatch = txt.match(/=== END (\S+) · exit (-?\d+) ===/);
+          if (endMatch) {
+            finishedAt = Date.parse(endMatch[1]);
+            exitCode = parseInt(endMatch[2], 10);
+            status = exitCode === 0 ? "completed" : "failed";
+          }
+        } catch {
+          // fall through with defaults
         }
-      } catch { /* fall through with defaults */ }
+      }
+      s.goals.push({
+        id: name,
+        title: prompt.split("\n")[0].slice(0, 80) || "Recovered goal",
+        prompt,
+        status,
+        createdAt: st.ctimeMs,
+        startedAt,
+        finishedAt,
+        cwd,
+        logFile,
+        exitCode,
+      });
+      recovered++;
     }
-    s.goals.push({
-      id: name,
-      title: prompt.split("\n")[0].slice(0, 80) || "Recovered goal",
-      prompt,
-      status,
-      createdAt: st.ctimeMs,
-      startedAt,
-      finishedAt,
-      cwd,
-      logFile,
-      exitCode,
-    });
-    recovered++;
   }
   if (recovered > 0) await withLock(async () => writeState(s));
   return { recovered, existing: s.goals.length - recovered };
@@ -193,7 +207,6 @@ export async function stopGoal(id: string): Promise<HermesGoal | null> {
     if (!g) return null;
     if (g.status === "running" && g.pid) {
       try { process.kill(g.pid, "SIGTERM"); } catch {}
-      // Give it a beat, then SIGKILL if still around
       const pid = g.pid;
       setTimeout(() => {
         try { process.kill(pid, 0); process.kill(pid, "SIGKILL"); } catch {}

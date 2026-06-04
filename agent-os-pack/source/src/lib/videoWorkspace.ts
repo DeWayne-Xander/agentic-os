@@ -13,8 +13,15 @@ import { readdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { AGENTIC_STATE_ROOT, HERMES_HOME, LEGACY_HERMES_HOME } from "@/lib/agentHomes";
 
 const HOME = os.homedir();
+const ROOTS = [HERMES_HOME, LEGACY_HERMES_HOME];
+const VIDEO_PROJECTS_ROOTS = [path.join(AGENTIC_STATE_ROOT, "video-projects")];
+
+function rootsFor(...segments: string[]): string[] {
+  return ROOTS.map((root) => path.join(root, ...segments));
+}
 
 export interface BucketDef {
   id: string;
@@ -31,14 +38,14 @@ const BUCKETS: BucketDef[] = [
   {
     id: "agent-os-projects",
     label: "Agent OS Projects",
-    paths: [path.join(HOME, ".agentic-os", "video-projects")],
+    paths: VIDEO_PROJECTS_ROOTS,
     description: "Projects created in this Video tab. HTML + rendered MP4s.",
     maxDepth: 3,    // project / out / file
   },
   {
     id: "agent-os-renders",
     label: "Agent OS Renders",
-    paths: [path.join(HOME, ".agentic-os", "video-projects")],
+    paths: VIDEO_PROJECTS_ROOTS,
     description: "All rendered MP4s from Agent OS projects.",
     extsAllow: VIDEO_EXTS,
     maxDepth: 3,
@@ -46,7 +53,7 @@ const BUCKETS: BucketDef[] = [
   {
     id: "hermes-videos",
     label: "Hermes Videos",
-    paths: [path.join(HOME, ".hermes", "videos")],
+    paths: rootsFor("videos"),
     description: "Videos generated through Hermes (HyperFrames, Remotion).",
     extsAllow: VIDEO_EXTS,
     maxDepth: 2,
@@ -125,7 +132,7 @@ async function walkBucket(def: BucketDef, maxFiles: number): Promise<VWFile[]> {
           // Build preview URL — if file is inside ~/.agentic-os/video-projects use
           // the `project` mode (containment-checked + cleaner). Otherwise use
           // `local` mode (which has its own allowlist).
-          const projectsRoot = path.join(HOME, ".agentic-os", "video-projects");
+          const projectsRoot = path.join(AGENTIC_STATE_ROOT, "video-projects");
           let url: string;
           if (full.startsWith(projectsRoot + path.sep)) {
             const rel = path.relative(projectsRoot, full);

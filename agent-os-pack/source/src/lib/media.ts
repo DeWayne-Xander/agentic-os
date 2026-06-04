@@ -7,29 +7,35 @@ import { readdir, stat } from "node:fs/promises";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { HERMES_HOME, LEGACY_HERMES_HOME } from "@/lib/agentHomes";
 
 export type MediaKind = "image" | "video" | "speech";
 
-const HERMES = path.join(os.homedir(), ".hermes");
+const HERMES_ROOTS = [HERMES_HOME, LEGACY_HERMES_HOME];
 
 // Auto-discover all Hermes profile dirs (julian, swarm10, etc.) so we don't hardcode.
 function profileDirs(): string[] {
-  const root = path.join(HERMES, "profiles");
-  if (!existsSync(root)) return [];
-  try {
-    return readdirSync(root)
-      .filter((n) => {
-        try { return statSync(path.join(root, n)).isDirectory(); }
-        catch { return false; }
-      })
-      .map((n) => path.join(root, n));
-  } catch { return []; }
+  const out = new Set<string>();
+  for (const home of HERMES_ROOTS) {
+    const root = path.join(home, "profiles");
+    if (!existsSync(root)) continue;
+    try {
+      for (const n of readdirSync(root)) {
+        try {
+          if (statSync(path.join(root, n)).isDirectory()) out.add(path.join(root, n));
+        } catch { /* ignore */ }
+      }
+    } catch { /* ignore */ }
+  }
+  return Array.from(out);
 }
 
 function fanOut(subdirs: string[]): string[] {
   // Top-level dirs + per-profile dirs for each of the named subdirs.
   const out: string[] = [];
-  for (const sub of subdirs) out.push(path.join(HERMES, sub));
+  for (const home of HERMES_ROOTS) {
+    for (const sub of subdirs) out.push(path.join(home, sub));
+  }
   for (const profile of profileDirs()) {
     for (const sub of subdirs) out.push(path.join(profile, sub));
   }
@@ -147,8 +153,8 @@ export function extractPathsFromText(text: string, kind: MediaKind): string[] {
 export function craftPrompt(kind: MediaKind, userPrompt: string): string {
   const trimmed = userPrompt.trim();
   if (kind === "image") {
-    return `Use your image_gen tool to create the following image, then save it to ~/.hermes/images/ (default).\n\nImage prompt:\n${trimmed}\n\nAfter saving, reply with ONLY the absolute file path(s) of the saved image(s). No commentary, no markdown, just the path.`;
-  }
+    return `Use your image_gen tool to create the following image, then save it to ~/.agentic-os/hermes/images/ (default).\n\nImage prompt:\n${trimmed}\n\nAfter saving, reply with ONLY the absolute file path(s) of the saved image(s). No commentary, no markdown, just the path.`;
+}
   if (kind === "video") {
     return `Use your video_gen tool to create the following short video clip, then save it locally (default output dir).\n\nVideo prompt:\n${trimmed}\n\nAfter saving, reply with ONLY the absolute file path(s) of the saved video(s). No commentary, no markdown.`;
   }

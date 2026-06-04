@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
-import os from "node:os";
+import { OPENCLAW_HOME, LEGACY_OPENCLAW_HOME } from "@/lib/agentHomes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ALERTS_FILE = path.join(os.homedir(), ".openclaw", "workspace", "scripts", "chrono-alerts.json");
+const ALERTS_FILE = path.join(OPENCLAW_HOME, "workspace", "scripts", "chrono-alerts.json");
+const LEGACY_ALERTS_FILE = path.join(LEGACY_OPENCLAW_HOME, "workspace", "scripts", "chrono-alerts.json");
 
 // GET — fetch pending alerts (for Telegram polling)
 export async function GET() {
   let alerts: any[] = [];
   try {
-    if (existsSync(ALERTS_FILE)) {
-      alerts = JSON.parse(readFileSync(ALERTS_FILE, "utf8"));
+    const source = existsSync(ALERTS_FILE) ? ALERTS_FILE : (existsSync(LEGACY_ALERTS_FILE) ? LEGACY_ALERTS_FILE : null);
+    if (source) {
+      alerts = JSON.parse(readFileSync(source, "utf8"));
     }
   } catch { alerts = []; }
 
@@ -30,10 +32,12 @@ export async function POST(req: Request) {
   if (action === "acknowledge" && alertId) {
     let alerts: any[] = [];
     try {
-      if (existsSync(ALERTS_FILE)) alerts = JSON.parse(readFileSync(ALERTS_FILE, "utf8"));
+      const source = existsSync(ALERTS_FILE) ? ALERTS_FILE : (existsSync(LEGACY_ALERTS_FILE) ? LEGACY_ALERTS_FILE : null);
+      if (source) alerts = JSON.parse(readFileSync(source, "utf8"));
     } catch { alerts = []; }
     const filtered = alerts.filter((a: any) => a.timestamp !== alertId);
     writeFileSync(ALERTS_FILE, JSON.stringify(filtered, null, 2));
+    try { writeFileSync(LEGACY_ALERTS_FILE, JSON.stringify(filtered, null, 2)); } catch {}
     return NextResponse.json({ ok: true, acknowledged: alertId, remaining: filtered.length });
   }
 
@@ -51,6 +55,7 @@ export async function POST(req: Request) {
     });
     if (alerts.length > 50) alerts = alerts.slice(-50);
     writeFileSync(ALERTS_FILE, JSON.stringify(alerts, null, 2));
+    try { writeFileSync(LEGACY_ALERTS_FILE, JSON.stringify(alerts, null, 2)); } catch {}
     return NextResponse.json({ ok: true, injected: true });
   }
 

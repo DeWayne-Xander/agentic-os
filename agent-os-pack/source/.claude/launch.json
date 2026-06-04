@@ -5,7 +5,7 @@
       "name": "agentic-os",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 3737
+      "port": 3001
     }
   ]
 }

@@ -11,10 +11,10 @@
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import os from "node:os";
+import { OPENCLAW_HOME, LEGACY_OPENCLAW_HOME } from "@/lib/agentHomes";
 
-const HOME = os.homedir();
-export const STUDIO_ROOT = path.join(HOME, ".openclaw", "studio");
+export const STUDIO_ROOT = path.join(OPENCLAW_HOME, "studio");
+const LEGACY_STUDIO_ROOT = path.join(LEGACY_OPENCLAW_HOME, "studio");
 export const SEARCHES_DIR = path.join(STUDIO_ROOT, "searches");
 export const TALKS_DIR = path.join(STUDIO_ROOT, "talks");
 
@@ -79,14 +79,16 @@ export async function saveSearch(rec: Omit<SearchRecord, "id">): Promise<SearchR
 }
 
 export async function listSearches(maxItems = 80): Promise<SearchRecord[]> {
-  if (!existsSync(SEARCHES_DIR)) return [];
+  const roots = [SEARCHES_DIR, path.join(LEGACY_STUDIO_ROOT, "searches")];
+  const dir = roots.find((root) => existsSync(root));
+  if (!dir) return [];
   let entries: string[] = [];
-  try { entries = await readdir(SEARCHES_DIR); } catch { return []; }
+  try { entries = await readdir(dir); } catch { return []; }
   const records: SearchRecord[] = [];
   for (const name of entries) {
     if (!name.endsWith(".json")) continue;
     try {
-      const txt = await readFile(path.join(SEARCHES_DIR, name), "utf8");
+      const txt = await readFile(path.join(dir, name), "utf8");
       records.push(JSON.parse(txt) as SearchRecord);
     } catch { /* skip malformed */ }
   }
@@ -96,8 +98,9 @@ export async function listSearches(maxItems = 80): Promise<SearchRecord[]> {
 
 export async function getSearch(id: string): Promise<SearchRecord | null> {
   if (!/^[A-Za-z0-9_.-]+$/.test(id)) return null;
-  const p = path.join(SEARCHES_DIR, `${id}.json`);
-  if (!existsSync(p)) return null;
+  const candidates = [path.join(SEARCHES_DIR, `${id}.json`), path.join(LEGACY_STUDIO_ROOT, "searches", `${id}.json`)];
+  const p = candidates.find((candidate) => existsSync(candidate));
+  if (!p) return null;
   try {
     const txt = await readFile(p, "utf8");
     return JSON.parse(txt) as SearchRecord;

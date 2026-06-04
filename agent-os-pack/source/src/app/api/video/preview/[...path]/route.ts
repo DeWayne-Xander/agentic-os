@@ -5,6 +5,7 @@ import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import path from "node:path";
 import os from "node:os";
 import { resolveProjectFile } from "@/lib/videoProjects";
+import { HERMES_HOME, LEGACY_HERMES_HOME } from "@/lib/agentHomes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,14 +32,15 @@ const MIME: Record<string, string> = {
 };
 function mimeFor(p: string): string { return MIME[path.extname(p).toLowerCase()] ?? "application/octet-stream"; }
 
-const HOME = os.homedir();
 // Allowlist for `local` mode — only these roots can be browsed
 const ALLOWED_LOCAL_ROOTS = [
-  path.join(HOME, "Downloads"),
-  path.join(HOME, "Desktop"),
-  path.join(HOME, "Documents"),
-  path.join(HOME, ".hermes", "videos"),
-  path.join(HOME, ".hermes", "profiles"),
+  path.join(os.homedir(), "Downloads"),
+  path.join(os.homedir(), "Desktop"),
+  path.join(os.homedir(), "Documents"),
+  path.join(HERMES_HOME, "videos"),
+  path.join(LEGACY_HERMES_HOME, "videos"),
+  path.join(HERMES_HOME, "profiles"),
+  path.join(LEGACY_HERMES_HOME, "profiles"),
 ];
 
 function resolveLocalFile(absInput: string): string | null {

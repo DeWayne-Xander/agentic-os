@@ -18,10 +18,15 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import os from "node:os";
+import { OPENCLAW_HOME, LEGACY_OPENCLAW_HOME } from "@/lib/agentHomes";
 
-const HOME = os.homedir();
-export const OPENCLAW_ROOT = path.join(HOME, ".openclaw");
+export const OPENCLAW_ROOT = OPENCLAW_HOME;
+const LEGACY_ROOT = LEGACY_OPENCLAW_HOME;
+const ALL_ROOTS = [OPENCLAW_ROOT, LEGACY_ROOT];
+
+function rootsFor(...segments: string[]): string[] {
+  return ALL_ROOTS.map((root) => path.join(root, ...segments));
+}
 
 // Bucket = a named output directory the UI presents as a "project".
 export interface BucketDef {
@@ -40,7 +45,7 @@ const BUCKETS: BucketDef[] = [
   {
     id: "studio-images",
     label: "Studio · Images",
-    paths: [path.join(OPENCLAW_ROOT, "studio", "images")],
+    paths: rootsFor("studio", "images"),
     description: "Grok-generated images. Created via the Studio tab.",
     kindsAllow: ["image"],
     maxDepth: 1,
@@ -48,7 +53,7 @@ const BUCKETS: BucketDef[] = [
   {
     id: "studio-videos",
     label: "Studio · Videos",
-    paths: [path.join(OPENCLAW_ROOT, "studio", "videos")],
+    paths: rootsFor("studio", "videos"),
     description: "Grok-generated videos. Created via the Studio tab.",
     kindsAllow: ["video"],
     maxDepth: 1,
@@ -56,7 +61,7 @@ const BUCKETS: BucketDef[] = [
   {
     id: "studio-audio",
     label: "Studio · Voice",
-    paths: [path.join(OPENCLAW_ROOT, "studio", "audio")],
+    paths: rootsFor("studio", "audio"),
     description: "Grok TTS clips. Created via the Studio tab.",
     kindsAllow: ["audio"],
     maxDepth: 1,
@@ -67,10 +72,10 @@ const BUCKETS: BucketDef[] = [
     // HTML the OpenClaw agents build — calculators, dashboards, mock-ups.
     // Strict ext filter so we don't pick up identity / config markdown.
     paths: [
-      path.join(OPENCLAW_ROOT, "workspace"),
-      path.join(OPENCLAW_ROOT, "workspace-julian"),
-      path.join(OPENCLAW_ROOT, "workspace-marketing"),
-      path.join(OPENCLAW_ROOT, "canvas"),
+      ...rootsFor("workspace"),
+      ...rootsFor("workspace-julian"),
+      ...rootsFor("workspace-marketing"),
+      ...rootsFor("canvas"),
     ],
     description: "HTML apps + pages OpenClaw built. Click any → renders live.",
     extsAllow: [".html", ".htm"],
@@ -79,21 +84,21 @@ const BUCKETS: BucketDef[] = [
   {
     id: "workspace-main",
     label: "Main Workspace",
-    paths: [path.join(OPENCLAW_ROOT, "workspace")],
+    paths: rootsFor("workspace"),
     description: "Scratch dir for the main agent — HTML, markdown, scripts, anything saved.",
     maxDepth: 3,
   },
   {
     id: "workspace-julian",
     label: "Julian Workspace",
-    paths: [path.join(OPENCLAW_ROOT, "workspace-julian")],
+    paths: rootsFor("workspace-julian"),
     description: "Scratch dir for the julian-flavoured agent.",
     maxDepth: 3,
   },
   {
     id: "workspace-marketing",
     label: "Marketing Workspace",
-    paths: [path.join(OPENCLAW_ROOT, "workspace-marketing")],
+    paths: rootsFor("workspace-marketing"),
     description: "Scratch dir for the marketing agent.",
     maxDepth: 3,
   },
@@ -102,7 +107,7 @@ const BUCKETS: BucketDef[] = [
     label: "Skills",
     // Skills are markdown SOPs OpenClaw can invoke. Surfacing them lets
     // Julian audit + edit the agent's playbook from the dashboard.
-    paths: [path.join(OPENCLAW_ROOT, "skills")],
+    paths: rootsFor("skills"),
     description: "Installed agent skills — the playbooks OpenClaw runs against.",
     extsAllow: [".md", ".markdown", ".txt", ".json", ".yaml", ".yml"],
     maxDepth: 3,
@@ -110,7 +115,7 @@ const BUCKETS: BucketDef[] = [
   {
     id: "flows",
     label: "Flows",
-    paths: [path.join(OPENCLAW_ROOT, "flows")],
+    paths: rootsFor("flows"),
     description: "Saved multi-step flows. Auto-orchestrated agent chains.",
     extsAllow: [".json", ".yaml", ".yml", ".md"],
     maxDepth: 3,
@@ -118,14 +123,14 @@ const BUCKETS: BucketDef[] = [
   {
     id: "canvas",
     label: "Canvas",
-    paths: [path.join(OPENCLAW_ROOT, "canvas"), path.join(OPENCLAW_ROOT, "claw3d")],
+    paths: [...rootsFor("canvas"), ...rootsFor("claw3d")],
     description: "Canvas drawings + 3D scenes.",
     maxDepth: 2,
   },
   {
     id: "tasks",
     label: "Tasks",
-    paths: [path.join(OPENCLAW_ROOT, "tasks")],
+    paths: rootsFor("tasks"),
     description: "Recorded tasks the agent has run.",
     extsAllow: [".json", ".md", ".txt", ".log"],
     maxDepth: 3,
@@ -133,7 +138,7 @@ const BUCKETS: BucketDef[] = [
   {
     id: "cron",
     label: "Cron",
-    paths: [path.join(OPENCLAW_ROOT, "cron")],
+    paths: rootsFor("cron"),
     description: "Scheduled / recurring agent jobs.",
     extsAllow: [".json", ".yaml", ".yml", ".md"],
     maxDepth: 3,
@@ -141,7 +146,7 @@ const BUCKETS: BucketDef[] = [
   {
     id: "logs",
     label: "Logs",
-    paths: [path.join(OPENCLAW_ROOT, "logs")],
+    paths: rootsFor("logs"),
     description: "Gateway + agent logs. Useful when something fails.",
     extsAllow: [".log", ".txt", ".json"],
     maxDepth: 2,

@@ -12,6 +12,7 @@ import { execSync, exec, type ChildProcess } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, appendFileSync, watch, type FSWatcher } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { OPENCLAW_HOME, LEGACY_OPENCLAW_HOME } from "@/lib/agentHomes";
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -51,8 +52,10 @@ export interface WatchedPath {
 
 const AGENT_DIR = path.join(os.homedir(), "Projects", "agentic-os-source", "agent-os-pack", "source");
 const GOLD_STANDARD_DIR = path.join(os.homedir(), ".config", "hermes", "vault", "System_Evals", "Gold_Standard");
-const CHRONO_LOG = path.join(os.homedir(), ".openclaw", "workspace", "logs", "chrono-events.log");
-const SCORE_HISTORY = path.join(os.homedir(), ".openclaw", "workspace", "logs", "chrono-scores.json");
+const CHRONO_LOG = path.join(OPENCLAW_HOME, "workspace", "logs", "chrono-events.log");
+const SCORE_HISTORY = path.join(OPENCLAW_HOME, "workspace", "logs", "chrono-scores.json");
+const LEGACY_CHRONO_LOG = path.join(LEGACY_OPENCLAW_HOME, "workspace", "logs", "chrono-events.log");
+const LEGACY_SCORE_HISTORY = path.join(LEGACY_OPENCLAW_HOME, "workspace", "logs", "chrono-scores.json");
 
 const WATCHED_PATHS: WatchedPath[] = [
   { path: path.join(AGENT_DIR, "src", "app", "api"), pattern: /route\.ts$/, category: "api-routes", lastMtime: 0 },
@@ -85,17 +88,28 @@ function logEvent(msg: string) {
   ensureLogDir();
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   try { appendFileSync(CHRONO_LOG, line); } catch { /* non-critical */ }
+  try {
+    const legacyDir = path.dirname(LEGACY_CHRONO_LOG);
+    if (!existsSync(legacyDir)) execSync(`mkdir -p "${legacyDir}"`);
+    appendFileSync(LEGACY_CHRONO_LOG, line);
+  } catch { /* non-critical */ }
 }
 
 function loadScoreHistory(): Record<string, number> {
-  if (existsSync(SCORE_HISTORY)) {
-    try { return JSON.parse(readFileSync(SCORE_HISTORY, "utf8")); } catch { /* ignore */ }
+  for (const file of [SCORE_HISTORY, LEGACY_SCORE_HISTORY]) {
+    if (!existsSync(file)) continue;
+    try { return JSON.parse(readFileSync(file, "utf8")); } catch { /* ignore */ }
   }
   return {};
 }
 
 function saveScoreHistory(history: Record<string, number>) {
   try { writeFileSync(SCORE_HISTORY, JSON.stringify(history, null, 2)); } catch { /* non-critical */ }
+  try {
+    const legacyDir = path.dirname(LEGACY_SCORE_HISTORY);
+    if (!existsSync(legacyDir)) execSync(`mkdir -p "${legacyDir}"`);
+    writeFileSync(LEGACY_SCORE_HISTORY, JSON.stringify(history, null, 2));
+  } catch { /* non-critical */ }
 }
 
 // ─── Event handlers ────────────────────────────────────────────────

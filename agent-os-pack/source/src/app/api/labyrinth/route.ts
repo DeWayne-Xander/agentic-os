@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { readdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { spawnStream } from "@/lib/runner";
+import { OPENCLAW_HOME, LEGACY_OPENCLAW_HOME } from "@/lib/agentHomes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,13 @@ function labyrinthArgs(args: string[]): string[] {
 }
 
 function cronSummary(): Promise<string> {
-  const jobsDir = path.join(os.homedir(), ".openclaw", "workspace", "codex", "context", "scheduler", "jobs");
+  const jobsDirs = [
+    path.join(OPENCLAW_HOME, "workspace", "codex", "context", "scheduler", "jobs"),
+    path.join(LEGACY_OPENCLAW_HOME, "workspace", "codex", "context", "scheduler", "jobs"),
+  ];
+  const jobsDir = jobsDirs.find((dir) => {
+    return existsSync(dir);
+  }) ?? jobsDirs[0];
   return readdir(jobsDir)
     .then((entries) => {
       const jobs = entries.filter((n) => n.endsWith(".json")).sort();

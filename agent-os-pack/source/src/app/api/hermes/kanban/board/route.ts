@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { config } from "@/lib/config";
+import { HERMES_HOME, LEGACY_HERMES_HOME } from "@/lib/agentHomes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   const slug = board && /^[a-z0-9_-]{1,64}$/.test(board) ? board : undefined;
 
   const hermesInstalled = !!config.hermes;
-  const dbExists = existsSync(path.join(os.homedir(), ".hermes", "kanban.db"));
+  const dbExists = existsSync(path.join(HERMES_HOME, "kanban.db")) || existsSync(path.join(LEGACY_HERMES_HOME, "kanban.db"));
   const empty = { tasks: [], boards: [], stats: {}, assignees: [] };
 
   let db: typeof import("@/lib/kanbanDb");
@@ -51,7 +51,7 @@ export async function GET(req: Request) {
     });
   } catch (e) {
     // DB couldn't be read — usually Hermes isn't installed / the board hasn't
-    // been initialised yet (no ~/.hermes/kanban.db).
+    // been initialised yet (no writable Hermes state db yet).
     return NextResponse.json({
       ok: false, reason: "db-read-failed", error: String(e),
       setup: { hermesInstalled, dbExists, nodeOk: true },

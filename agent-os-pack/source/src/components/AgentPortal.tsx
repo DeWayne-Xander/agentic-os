@@ -12,14 +12,14 @@ interface Props {
   icon: ReactNode;
   accent: string;
   metrics: { label: string; value: string }[];
-  status: "ok" | "warn" | "err";
+  status: "ok" | "warn" | "err" | "online" | "busy" | "degraded";
 }
 
 // AgentPortal — Mission Control "Agents" grid card.
 // Aubergine background + gold-tinted border + Bricolage Grotesque title,
 // Manrope tagline, JetBrains Mono metric values. Matches free-claude-code-elegant.html.
 export default function AgentPortal({ href, title, tagline, icon, accent, metrics, status }: Props) {
-  const statusLabel = status === "ok" ? "Online" : status === "warn" ? "Degraded" : "Offline";
+  const statusLabel = (status === "ok" || status === "online") ? "Online" : status === "warn" ? "Degraded" : status === "busy" ? "Busy" : "Offline";
 
   return (
     <Link href={href} className="block group">
